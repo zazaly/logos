@@ -39,6 +39,7 @@ include = ["bru*"]
 [tool.pytest.ini_options]
 testpaths    = ["tests"]
 addopts      = "-v --tb=short"
+pythonpath   = ["."]
 
 # ── ruff (linter / formatter) ─────────────────────────────────────────────── #
 [tool.ruff]

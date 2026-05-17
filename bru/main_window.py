@@ -66,8 +66,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Bulk Rename Utility  v3")
         self.resize(1460, 920)
 
-        self._build_menu()
         self._build_ui()
+        self._build_menu()
         self._load_directory(self._current_dir)
 
     # ══════════════════════════════════════════════════════════════════ #
@@ -206,6 +206,8 @@ class MainWindow(QMainWindow):
         w = QWidget(); v = QVBoxLayout(w)
         v.setContentsMargins(0, 0, 0, 0); v.setSpacing(4)
 
+        self._file_table = FileTable()
+
         # Mini toolbar
         tb = QWidget(); th = QHBoxLayout(tb)
         th.setContentsMargins(0, 0, 0, 0); th.setSpacing(4)
@@ -225,7 +227,6 @@ class MainWindow(QMainWindow):
         th.addWidget(self._count_label)
         v.addWidget(tb)
 
-        self._file_table = FileTable()
         self._file_table.rows_reordered.connect(self._schedule_preview)
         self._file_table.selection_toggled.connect(self._schedule_preview)
         v.addWidget(self._file_table)
