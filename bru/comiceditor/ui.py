@@ -794,7 +794,9 @@ class MetadataTable(QTableWidget):
 # ── Main Window ───────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    log_emitted = Signal(str, str)
+
+    def __init__(self, *, show_console: bool = True):
         super().__init__()
         self.setWindowTitle("Comic Bulk Metadata Editor")
         self.resize(1380, 880)
@@ -810,6 +812,7 @@ class MainWindow(QMainWindow):
         self._saved = False
         self._col_map: dict[str, int] = {}
 
+        self._show_console = show_console
         self._build_ui()
         self.setStyleSheet(STYLE)
 
@@ -872,26 +875,31 @@ class MainWindow(QMainWindow):
         self.table.log_message.connect(self._log)
         splitter.addWidget(self.table)
 
-        # Console
-        log_frame = QWidget()
-        log_lay = QVBoxLayout(log_frame)
-        log_lay.setContentsMargins(0, 2, 0, 0)
-        log_lay.setSpacing(1)
-        log_hdr = QLabel("Console  (also visible in terminal)")
-        log_hdr.setObjectName("dim")
-        log_lay.addWidget(log_hdr)
-        self.console = ConsoleLog()
-        log_lay.addWidget(self.console)
-        splitter.addWidget(log_frame)
-
-        splitter.setSizes([660, 160])
+        self.console = None
+        if self._show_console:
+            log_frame = QWidget()
+            log_lay = QVBoxLayout(log_frame)
+            log_lay.setContentsMargins(0, 2, 0, 0)
+            log_lay.setSpacing(1)
+            log_hdr = QLabel("Console  (also visible in terminal)")
+            log_hdr.setObjectName("dim")
+            log_lay.addWidget(log_hdr)
+            self.console = ConsoleLog()
+            log_lay.addWidget(self.console)
+            splitter.addWidget(log_frame)
+            splitter.setSizes([660, 160])
+        else:
+            splitter.setSizes([820])
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
+        if self._show_console:
+            splitter.setStretchFactor(1, 0)
 
         self._log("Ready. Open a folder containing comic archives to begin.", "dim")
 
     def _log(self, msg: str, level: str = "info"):
-        self.console.log(msg, level)
+        if self.console is not None:
+            self.console.log(msg, level)
+        self.log_emitted.emit(msg, level)
 
     # ── Folder open ───────────────────────────────────────────────────────────
 

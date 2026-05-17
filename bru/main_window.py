@@ -15,6 +15,7 @@ Responsibilities
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import re
 import sys
@@ -24,13 +25,12 @@ from typing import Any
 from PySide6.QtCore import (
     Qt, QTimer,
 )
-from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox,
     QDialog, QDoubleSpinBox, QFileDialog, QGridLayout,
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTabWidget,
+    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTabWidget, QTextEdit,
     QVBoxLayout, QWidget,
 )
 
@@ -39,7 +39,7 @@ from bru.history  import HistoryEntry, HistoryManager
 from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
 from bru.theme    import (
-    COLORS, apply_dark_theme, apply_light_theme, apply_windows_98_theme,
+    COLORS, apply_dark_theme, apply_light_theme, apply_windows_xp_theme,
 )
 from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self.history   = HistoryManager()
 
         self._current_dir: str              = str(Path.home())
+        self._settings_path = Path(__file__).resolve().parent.parent / "settings.json"
         self._meta_cache: dict[str, dict]   = {}
 
         # Debounce: fire preview 150 ms after the last control change
@@ -70,106 +71,23 @@ class MainWindow(QMainWindow):
         self.resize(1920, 826)
 
         self._build_ui()
-        self._build_menu()
+        self._load_settings()
         self._load_directory(self._current_dir)
-
-    # ══════════════════════════════════════════════════════════════════ #
-    #  MENU BAR
-    # ══════════════════════════════════════════════════════════════════ #
-
-    def _build_menu(self) -> None:
-        mb = self.menuBar()
-
-        # File
-        mf = mb.addMenu("File")
-        self._add_action(mf, "Open Folder…",  "Ctrl+O", self._browse_folder)
-        mf.addSeparator()
-        self._add_action(mf, "Quit",           "Ctrl+Q", self.close)
-
-        # Edit
-        me = mb.addMenu("Edit")
-        self._a_undo = self._add_action(
-            me, "Undo Last Rename", "Ctrl+Z", self._do_undo, enabled=False
-        )
-        me.addSeparator()
-        self._add_action(me, "Select All",         "Ctrl+A",
-                         lambda: self._file_table.set_all_enabled(True))
-        self._add_action(me, "Select None",        "Ctrl+D",
-                         lambda: self._file_table.set_all_enabled(False))
-        self._add_action(me, "Invert Selection",   "",
-                         self._file_table.invert_enabled)
-        me.addSeparator()
-        self._add_action(me, "Reset All Controls", "", self._reset_controls)
-
-        # Presets
-        mp = mb.addMenu("Presets")
-        self._add_action(mp, "Manage Presets…", "Ctrl+P", self._open_presets)
-
-        # View
-        mv = mb.addMenu("View")
-        dark_action = QAction("Solarized Dark Theme", self, checkable=True)
-        light_action = QAction("Solarized Light Theme", self, checkable=True)
-        win98_action = QAction("Windows 98 Theme", self, checkable=True)
-        win98_action.setChecked(True)
-        dark_action.triggered.connect(
-            lambda: self._set_theme(
-                "dark", dark_action, light_action, win98_action
-            )
-        )
-        light_action.triggered.connect(
-            lambda: self._set_theme(
-                "light", dark_action, light_action, win98_action
-            )
-        )
-        win98_action.triggered.connect(
-            lambda: self._set_theme(
-                "win98", dark_action, light_action, win98_action
-            )
-        )
-        mv.addAction(dark_action)
-        mv.addAction(light_action)
-        mv.addAction(win98_action)
-
-    def _add_action(
-        self, menu, label: str, shortcut: str, slot, *, enabled: bool = True
-    ) -> QAction:
-        a = QAction(label, self)
-        if shortcut:
-            a.setShortcut(QKeySequence(shortcut))
-        a.triggered.connect(slot)
-        a.setEnabled(enabled)
-        menu.addAction(a)
-        return a
-
-    def _set_theme(
-        self,
-        mode: str,
-        dark_action: QAction,
-        light_action: QAction,
-        win98_action: QAction,
-    ) -> None:
+    def _set_theme(self, mode: str) -> None:
         app = QApplication.instance()
         if app is None:
             return
         if mode == "dark":
             apply_dark_theme(app)
-            win98_action.setChecked(True)
-            light_action.setChecked(False)
-            win98_action.setChecked(False)
             self._status.showMessage("Theme set to Solarized Dark.", 2500)
-            return
-        if mode == "light":
+        elif mode == "light":
             apply_light_theme(app)
-            dark_action.setChecked(False)
-            light_action.setChecked(True)
-            win98_action.setChecked(False)
             self._status.showMessage("Theme set to Solarized Light.", 2500)
-            return
-        apply_windows_98_theme(app)
-        dark_action.setChecked(False)
-        light_action.setChecked(False)
-        win98_action.setChecked(True)
-        self._status.showMessage("Theme set to Windows 98.", 2500)
+        else:
+            apply_windows_xp_theme(app)
+            self._status.showMessage("Theme set to Windows XP.", 2500)
+        self._metadata_window.setStyleSheet(app.styleSheet())
+        self._save_settings()
 
     # ══════════════════════════════════════════════════════════════════ #
     #  UI BUILD
@@ -182,11 +100,12 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(8, 4, 8, 6)
         root.setSpacing(5)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_rename_tab(), "Rename")
-        tabs.addTab(self._build_metadata_tab(), "Metadata")
-        tabs.addTab(self._build_history_tab(), "History")
-        root.addWidget(tabs, stretch=1)
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._build_rename_tab(), "Rename")
+        self._tabs.addTab(self._build_metadata_tab(), "Metadata")
+        self._tabs.addTab(self._build_history_tab(), "History")
+        self._tabs.addTab(self._build_settings_tab(), "Settings")
+        root.addWidget(self._tabs, stretch=1)
 
         self._status = QStatusBar()
         self._progress = QProgressBar()
@@ -218,20 +137,69 @@ class MainWindow(QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        self._metadata_window = MetadataEditorMainWindow()
+        self._metadata_window = MetadataEditorMainWindow(show_console=False)
         self._metadata_window.setWindowFlags(Qt.Widget)
         self._metadata_window.setParent(tab)
+        self._metadata_window.log_emitted.connect(self._append_console)
         v.addWidget(self._metadata_window)
         return tab
 
     def _build_history_tab(self) -> QWidget:
         tab = QWidget()
-        v = QVBoxLayout(tab)
-        v.setContentsMargins(0, 0, 0, 0)
+        v = QVBoxLayout(tab); v.setContentsMargins(0, 0, 0, 0)
         self._history_panel = HistoryPanel()
         self._history_panel.undo_requested.connect(self._do_undo)
-        v.addWidget(self._history_panel)
+        split = QSplitter(Qt.Vertical)
+        split.addWidget(self._history_panel)
+        self._history_console = QTextEdit()
+        self._history_console.setReadOnly(True)
+        self._history_console.setMinimumHeight(120)
+        split.addWidget(self._history_console)
+        split.setSizes([500, 220])
+        v.addWidget(split)
         return tab
+
+    def _build_settings_tab(self) -> QWidget:
+        tab = QWidget()
+        g = QGridLayout(tab)
+        g.addWidget(QLabel("Theme"), 0, 0)
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItems(["Windows XP", "Solarized Dark", "Solarized Light"])
+        self._theme_combo.currentTextChanged.connect(self._on_theme_combo_changed)
+        g.addWidget(self._theme_combo, 0, 1)
+        g.addWidget(QLabel("Default Path"), 1, 0)
+        self._settings_path_edit = QLineEdit()
+        self._settings_path_edit.editingFinished.connect(self._save_settings)
+        g.addWidget(self._settings_path_edit, 1, 1)
+        g.setColumnStretch(1, 1)
+        return tab
+
+    def _append_console(self, msg: str, _level: str = "info") -> None:
+        self._history_console.append(msg)
+
+    def _on_theme_combo_changed(self, label: str) -> None:
+        mapping = {"Windows XP": "xp", "Solarized Dark": "dark", "Solarized Light": "light"}
+        self._set_theme(mapping.get(label, "xp"))
+
+    def _load_settings(self) -> None:
+        default_downloads = str(Path.home() / "Downloads")
+        settings = {"theme": "xp", "default_path": default_downloads}
+        if self._settings_path.exists():
+            try:
+                settings.update(json.loads(self._settings_path.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+        self._settings_path_edit.setText(settings.get("default_path", default_downloads))
+        self._current_dir = settings.get("default_path", default_downloads)
+        mapping = {"xp": "Windows XP", "dark": "Solarized Dark", "light": "Solarized Light"}
+        self._theme_combo.setCurrentText(mapping.get(settings.get("theme", "xp"), "Windows XP"))
+        self._set_theme(settings.get("theme", "xp"))
+
+    def _save_settings(self) -> None:
+        theme_map = {"Windows XP": "xp", "Solarized Dark": "dark", "Solarized Light": "light"}
+        data = {"theme": theme_map.get(self._theme_combo.currentText(), "xp"),
+                "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads")}
+        self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # ── Path bar ──────────────────────────────────────────────────────── #
 
@@ -970,7 +938,6 @@ class MainWindow(QMainWindow):
             self.history.push(entry)
             self._history_panel.refresh(self.history.visible_entries())
             self._btn_undo.setEnabled(True)
-            self._a_undo.setEnabled(True)
 
         if errors:
             QMessageBox.warning(
@@ -997,7 +964,6 @@ class MainWindow(QMainWindow):
         self._history_panel.refresh(self.history.visible_entries())
         can = self.history.can_undo()
         self._btn_undo.setEnabled(can)
-        self._a_undo.setEnabled(can)
         if errors:
             QMessageBox.warning(self, "Undo Errors", "\n".join(errors[:15]))
         else:

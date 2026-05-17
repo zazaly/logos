@@ -240,3 +240,25 @@ def apply_windows_98_theme(app: QApplication) -> None:
         "ERR": "#A00000",
         "OK": "#008000",
     })
+
+
+def apply_windows_xp_theme(app: QApplication) -> None:
+    """Apply a Windows XP (Luna-inspired) palette/theme."""
+    app.setStyle(QStyleFactory.create("Fusion"))
+    c = {
+        "BG": "#ECE9D8",
+        "BG2": "#F3F1E6",
+        "BG3": "#FFFFFF",
+        "BG4": "#D6D3C6",
+        "FG": "#000000",
+        "ACC": "#0A246A",
+        "ACC2": "#3A6EA5",
+        "MUT": "#4A4A4A",
+        "SEL": "#316AC5",
+        "BORD": "#7F9DB9",
+        "WARN": "#8B5A00",
+        "ERR": "#A00000",
+        "OK": "#0E7A0D",
+    }
+    apply_theme(app, c)
+    app.setFont(QFont("FiraCode Nerd Font", 10))
