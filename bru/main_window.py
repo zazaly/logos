@@ -39,7 +39,8 @@ from bru.history  import HistoryEntry, HistoryManager
 from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
 from bru.theme    import (
-    COLORS, apply_dark_theme, apply_light_theme, apply_windows_xp_theme,
+    COLORS, THEMES_DIR, apply_dark_theme, apply_light_theme, apply_theme,
+    apply_windows_xp_theme, load_cosmic_ron_palette,
 )
 from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         self._current_dir: str              = str(Path.home())
         self._settings_path = Path(__file__).resolve().parent.parent / "settings.json"
         self._meta_cache: dict[str, dict]   = {}
+        self._theme_choices: dict[str, str] = {}
 
         # Debounce: fire preview 150 ms after the last control change
         self._preview_timer = QTimer(singleShot=True, interval=150)
@@ -83,6 +85,14 @@ class MainWindow(QMainWindow):
         elif mode == "light":
             apply_light_theme(app)
             self._status.showMessage("Theme set to Solarized Light.", 2500)
+        elif mode.startswith("ron:"):
+            ron_path = mode.removeprefix("ron:")
+            try:
+                apply_theme(app, load_cosmic_ron_palette(ron_path))
+                self._status.showMessage(f"Theme loaded from {Path(ron_path).name}.", 2500)
+            except Exception as exc:
+                self._status.showMessage(f"Failed to load theme: {exc}", 4000)
+                apply_windows_xp_theme(app)
         else:
             apply_windows_xp_theme(app)
             self._status.showMessage("Theme set to Windows XP.", 2500)
@@ -164,7 +174,8 @@ class MainWindow(QMainWindow):
         g = QGridLayout(tab)
         g.addWidget(QLabel("Theme"), 0, 0)
         self._theme_combo = QComboBox()
-        self._theme_combo.addItems(["Windows XP", "Solarized Dark", "Solarized Light"])
+        self._refresh_theme_choices()
+        self._theme_combo.addItems(list(self._theme_choices.keys()))
         self._theme_combo.currentTextChanged.connect(self._on_theme_combo_changed)
         g.addWidget(self._theme_combo, 0, 1)
         g.addWidget(QLabel("Default Path"), 1, 0)
@@ -178,8 +189,18 @@ class MainWindow(QMainWindow):
         self._history_console.append(msg)
 
     def _on_theme_combo_changed(self, label: str) -> None:
-        mapping = {"Windows XP": "xp", "Solarized Dark": "dark", "Solarized Light": "light"}
-        self._set_theme(mapping.get(label, "xp"))
+        self._set_theme(self._theme_choices.get(label, "xp"))
+
+    def _refresh_theme_choices(self) -> None:
+        self._theme_choices = {
+            "Windows XP": "xp",
+            "Solarized Dark": "dark",
+            "Solarized Light": "light",
+        }
+        if THEMES_DIR.exists():
+            for ron_file in sorted(THEMES_DIR.glob("**/*.ron")):
+                label = f"COSMIC • {ron_file.stem}"
+                self._theme_choices[label] = f"ron:{ron_file.as_posix()}"
 
     def _load_settings(self) -> None:
         default_downloads = str(Path.home() / "Downloads")
@@ -191,13 +212,13 @@ class MainWindow(QMainWindow):
                 pass
         self._settings_path_edit.setText(settings.get("default_path", default_downloads))
         self._current_dir = settings.get("default_path", default_downloads)
-        mapping = {"xp": "Windows XP", "dark": "Solarized Dark", "light": "Solarized Light"}
-        self._theme_combo.setCurrentText(mapping.get(settings.get("theme", "xp"), "Windows XP"))
-        self._set_theme(settings.get("theme", "xp"))
+        selected_theme = settings.get("theme", "xp")
+        reverse = {value: key for key, value in self._theme_choices.items()}
+        self._theme_combo.setCurrentText(reverse.get(selected_theme, "Windows XP"))
+        self._set_theme(selected_theme)
 
     def _save_settings(self) -> None:
-        theme_map = {"Windows XP": "xp", "Solarized Dark": "dark", "Solarized Light": "light"}
-        data = {"theme": theme_map.get(self._theme_combo.currentText(), "xp"),
+        data = {"theme": self._theme_choices.get(self._theme_combo.currentText(), "xp"),
                 "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads")}
         self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 

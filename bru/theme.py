@@ -5,6 +5,9 @@ Solarized colour palettes and QSS stylesheet generator.
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
@@ -42,6 +45,48 @@ SOLARIZED_LIGHT: dict[str, str] = {
 
 # Default runtime palette used by widgets that reference COLORS directly.
 COLORS: dict[str, str] = dict(SOLARIZED_DARK)
+THEMES_DIR = Path(__file__).resolve().parent.parent / "themes"
+
+
+def _float_rgb_to_hex(r: float, g: float, b: float) -> str:
+    return "#{:02x}{:02x}{:02x}".format(
+        max(0, min(255, int(round(r * 255)))),
+        max(0, min(255, int(round(g * 255)))),
+        max(0, min(255, int(round(b * 255)))),
+    )
+
+
+def _extract_ron_color(text: str, name: str) -> str | None:
+    pattern = (
+        rf"{name}\s*:\s*\(\s*red:\s*([0-9]*\.?[0-9]+)\s*,\s*"
+        rf"green:\s*([0-9]*\.?[0-9]+)\s*,\s*blue:\s*([0-9]*\.?[0-9]+)"
+    )
+    match = re.search(pattern, text, flags=re.S)
+    if not match:
+        return None
+    r, g, b = (float(value) for value in match.groups())
+    return _float_rgb_to_hex(r, g, b)
+
+
+def load_cosmic_ron_palette(path: str | Path) -> dict[str, str]:
+    """Load a COSMIC .ron theme and convert it to BRU palette keys."""
+    text = Path(path).read_text(encoding="utf-8")
+    palette = {
+        "BG": _extract_ron_color(text, "neutral_2") or "#1c1c1c",
+        "BG2": _extract_ron_color(text, "neutral_3") or "#2e2e2e",
+        "BG3": _extract_ron_color(text, "gray_2") or "#2a2a2a",
+        "BG4": _extract_ron_color(text, "neutral_4") or "#484848",
+        "FG": _extract_ron_color(text, "neutral_10") or "#ffffff",
+        "ACC": _extract_ron_color(text, "accent_blue") or "#63d0df",
+        "ACC2": _extract_ron_color(text, "accent_purple") or "#d68cff",
+        "MUT": _extract_ron_color(text, "neutral_8") or "#b3b3b3",
+        "SEL": _extract_ron_color(text, "accent_indigo") or "#4f80ff",
+        "BORD": _extract_ron_color(text, "neutral_5") or "#636363",
+        "WARN": _extract_ron_color(text, "bright_orange") or "#ff8a45",
+        "ERR": _extract_ron_color(text, "bright_red") or "#ff4d4d",
+        "OK": _extract_ron_color(text, "bright_green") or "#6ee087",
+    }
+    return palette
 
 
 def _build_stylesheet(c: dict[str, str]) -> str:
