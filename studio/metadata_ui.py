@@ -41,23 +41,28 @@ from studio.metadata_worker import ExtractionWorker, RepackageWorker
 from studio.metadata_sidecar import generate_cover, generate_metadata_json, generate_csv_report
 
 
+
+def _color(name: str, default: str) -> str:
+    return COLORS.get(name, default)
+
+
 # ── Palette ───────────────────────────────────────────────────────────────────
 
-DARK_BG      = "#1e1e2e"
-PANEL_BG     = "#2a2a3e"
-HEADER_BG    = "#313154"
-SECTION_BG   = "#1a1a2e"
-CELL_BG      = "#2a2a3e"
-CELL_ALT_BG  = "#242436"
-ACCENT       = "#7c6af7"
-ACCENT2      = "#a89cf7"
-TEXT_MAIN    = "#e0e0f0"
-TEXT_DIM     = "#8888aa"
-TEXT_SECTION = "#c0b8ff"
-BORDER       = "#3a3a5a"
-SUCCESS      = "#4caf84"
-WARNING      = "#e8a838"
-ERROR        = "#e85555"
+DARK_BG      = _color("BG", "#1e1e2e")
+PANEL_BG     = _color("BG2", "#2a2a3e")
+HEADER_BG    = _color("BG4", "#313154")
+SECTION_BG   = _color("BG", "#1a1a2e")
+CELL_BG      = _color("BG2", "#2a2a3e")
+CELL_ALT_BG  = _color("BG3", "#242436")
+ACCENT       = _color("ACC", "#7c6af7")
+ACCENT2      = _color("ACC2", "#a89cf7")
+TEXT_MAIN    = _color("FG", "#e0e0f0")
+TEXT_DIM     = _color("MUT", "#8888aa")
+TEXT_SECTION = _color("FG", "#c0b8ff")
+BORDER       = _color("BORD", "#3a3a5a")
+SUCCESS      = _color("OK", "#4caf84")
+WARNING      = _color("WARN", "#e8a838")
+ERROR        = _color("ERR", "#e85555")
 
 # Defragmenter block state colours
 BLOCK_IDLE       = "#2a2a4a"
@@ -123,7 +128,7 @@ QPushButton#row_btn {{
     border: 1px solid {BORDER};
     color: {TEXT_MAIN};
     border-radius: 3px;
-    padding: 1px 3px;
+    padding: 3px 8px;
     font-size: 13px;
     min-width: 0px;
     min-height: 0px;
@@ -441,8 +446,8 @@ class RowActionWidget(QWidget):
         self._row = row
         icon_map = _normalize_action_icons(icons)
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(2, 1, 2, 1)
-        lay.setSpacing(2)
+        lay.setContentsMargins(6, 2, 6, 2)
+        lay.setSpacing(6)
 
         self.btn_u = QPushButton(icon_map.get("update", "update"))
         self.btn_m = QPushButton(icon_map.get("mirror", "mirror"))
@@ -451,8 +456,8 @@ class RowActionWidget(QWidget):
 
         for btn in (self.btn_u, self.btn_m, self.btn_a, self.btn_c):
             btn.setObjectName("row_btn")
-            btn.setFixedHeight(22)
-            btn.setMinimumWidth(52)
+            btn.setFixedHeight(26)
+            btn.setMinimumWidth(68)
             btn.setFont(QFont(_resolve_action_icon_font(icon_font), 11))
 
         self.btn_u.setToolTip("Update — flash to confirm first-column value")
@@ -553,7 +558,7 @@ class MetadataTable(QTableWidget):
         self._row_map = rows
         self.setRowCount(len(rows))
         self.setColumnCount(2)
-        self.setHorizontalHeaderLabels(["Field", ""])
+        self.setHorizontalHeaderLabels(["General Information", "Operations"])
 
         current_section = ""
         for i, tag in enumerate(self._row_map):
@@ -580,7 +585,7 @@ class MetadataTable(QTableWidget):
                 blank.setFlags(Qt.ItemIsEnabled)
                 blank.setBackground(QBrush(QColor(SECTION_BG)))
                 self.setItem(i, ACTION_COL, blank)
-                self.setRowHeight(i, 26)
+                self.setRowHeight(i, 32)
             else:
                 label = next(l for t, s, l, ft in FIELDS if t == tag)
                 litem = QTableWidgetItem(f"  {label}")
@@ -595,10 +600,10 @@ class MetadataTable(QTableWidget):
                 aw.auto_clicked.connect(self._on_auto)
                 aw.clear_clicked.connect(self._on_clear)
                 self.setCellWidget(i, ACTION_COL, aw)
-                self.setRowHeight(i, 26)
+                self.setRowHeight(i, 32)
 
         self.setColumnWidth(LABEL_COL, 170)
-        self.setColumnWidth(ACTION_COL, 120)
+        self.setColumnWidth(ACTION_COL, 340)
         self.horizontalHeader().setSectionResizeMode(LABEL_COL,  QHeaderView.Fixed)
         self.horizontalHeader().setSectionResizeMode(ACTION_COL, QHeaderView.Fixed)
 
