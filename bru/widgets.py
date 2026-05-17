@@ -6,7 +6,7 @@ Reusable PySide6 widgets used by the main window.
 Classes
 -------
 FileTable          QTableWidget subclass with drag-to-reorder rows,
-                   per-row enable checkboxes, and a right-click menu.
+                   mouse/keyboard row selection, and a right-click menu.
 HistoryPanel       Read-only QListWidget panel for the undo history.
 PresetDialog       Modal dialog for managing saved presets.
 SectionLabel       Styled QLabel used as a panel header.
@@ -29,10 +29,9 @@ import re
 from bru.theme import COLORS
 
 # Column indices (shared constant — import from here if needed)
-COL_ENABLE = 0
-COL_ORIG   = 1
-COL_NEW    = 2
-COL_STATUS = 3
+COL_ORIG   = 0
+COL_NEW    = 1
+COL_STATUS = 2
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -98,41 +97,40 @@ class RegExLineEdit(QLineEdit):
 
 class FileTable(QTableWidget):
     """
-    Four-column table:  ☐ | Original Name | New Name | Status
+    Three-column table: Original Name | New Name | Status
 
     Features
     --------
-    • Per-row enable/disable checkbox in column 0.
+    • Per-row enable/disable via row selection.
     • Drag-to-reorder rows (internal move).
     • Right-click context menu: enable / disable / copy new names.
     • ``rows_reordered`` signal emitted after a drag-drop reorder.
-    • ``selection_toggled`` signal emitted when a checkbox changes.
+    • ``selection_toggled`` signal emitted when selection changes.
     """
 
     rows_reordered   = Signal()
     selection_toggled = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(0, 4, parent)
+        super().__init__(0, 3, parent)
         self._setup_appearance()
         self._setup_dnd()
-        self.itemChanged.connect(self._on_item_changed)
+        self.itemSelectionChanged.connect(self.selection_toggled.emit)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
 
     # ------------------------------------------------------------------ #
     def _setup_appearance(self) -> None:
         c = COLORS
-        self.setHorizontalHeaderLabels(["", "Original Name", "New Name", "Status"])
+        self.setHorizontalHeaderLabels(["Original Name", "New Name", "Status"])
         hh = self.horizontalHeader()
-        hh.setSectionResizeMode(COL_ENABLE, QHeaderView.Fixed)
         hh.setSectionResizeMode(COL_ORIG,   QHeaderView.Stretch)
         hh.setSectionResizeMode(COL_NEW,    QHeaderView.Stretch)
         hh.setSectionResizeMode(COL_STATUS, QHeaderView.Fixed)
-        self.setColumnWidth(COL_ENABLE, 28)
-        self.setColumnWidth(COL_STATUS, 90)
+        self.setColumnWidth(COL_STATUS, 96)
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.verticalHeader().setDefaultSectionSize(22)
         self.verticalHeader().setVisible(False)
@@ -155,42 +153,32 @@ class FileTable(QTableWidget):
         self.setRowCount(len(filenames))
         c = COLORS
         for row, name in enumerate(filenames):
-            # Column 0: enable checkbox
-            chk = QTableWidgetItem()
-            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            chk.setCheckState(Qt.Checked)
-            self.setItem(row, COL_ENABLE, chk)
-            # Column 1: original name
             orig = QTableWidgetItem(name)
             orig.setForeground(QColor(c["FG"]))
             self.setItem(row, COL_ORIG, orig)
-            # Columns 2–3: placeholders
             self.setItem(row, COL_NEW,    QTableWidgetItem(""))
             self.setItem(row, COL_STATUS, QTableWidgetItem(""))
         self.blockSignals(False)
 
     def row_enabled(self, row: int) -> bool:
-        it = self.item(row, COL_ENABLE)
-        return it is not None and it.checkState() == Qt.Checked
+        return self.item(row, COL_ORIG).isSelected() if self.item(row, COL_ORIG) else False
 
     def set_all_enabled(self, state: bool) -> None:
-        self.blockSignals(True)
-        for row in range(self.rowCount()):
-            it = self.item(row, COL_ENABLE)
-            if it:
-                it.setCheckState(Qt.Checked if state else Qt.Unchecked)
-        self.blockSignals(False)
+        self.clearSelection()
+        if state:
+            self.selectAll()
         self.selection_toggled.emit()
 
     def invert_enabled(self) -> None:
-        self.blockSignals(True)
+        model = self.selectionModel()
+        if model is None:
+            return
         for row in range(self.rowCount()):
-            it = self.item(row, COL_ENABLE)
-            if it:
-                it.setCheckState(
-                    Qt.Unchecked if it.checkState() == Qt.Checked else Qt.Checked
-                )
-        self.blockSignals(False)
+            idx = self.model().index(row, 0)
+            if model.isRowSelected(row, idx.parent()):
+                model.select(idx, model.SelectionFlag.Deselect | model.SelectionFlag.Rows)
+            else:
+                model.select(idx, model.SelectionFlag.Select | model.SelectionFlag.Rows)
         self.selection_toggled.emit()
 
     def original_names(self) -> list[str]:
@@ -286,12 +274,6 @@ class FileTable(QTableWidget):
         self.rows_reordered.emit()
 
     # ------------------------------------------------------------------ #
-    # Signals
-    # ------------------------------------------------------------------ #
-    def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        if item.column() == COL_ENABLE:
-            self.selection_toggled.emit()
-
     # ------------------------------------------------------------------ #
     # Context menu
     # ------------------------------------------------------------------ #
@@ -307,12 +289,15 @@ class FileTable(QTableWidget):
         a_orig = menu.addAction("📋  Copy original names to clipboard")
         action = menu.exec(self.viewport().mapToGlobal(pos))
         if action == a_en:
-            for r in rows:
-                self.item(r, COL_ENABLE).setCheckState(Qt.Checked)
+            for r in sorted(rows):
+                self.selectRow(r)
             self.selection_toggled.emit()
         elif action == a_dis:
-            for r in rows:
-                self.item(r, COL_ENABLE).setCheckState(Qt.Unchecked)
+            model = self.selectionModel()
+            if model is not None:
+                for r in rows:
+                    idx = self.model().index(r, 0)
+                    model.select(idx, model.SelectionFlag.Deselect | model.SelectionFlag.Rows)
             self.selection_toggled.emit()
         elif action == a_copy:
             names = [self.item(r, COL_NEW).text() for r in sorted(rows)
