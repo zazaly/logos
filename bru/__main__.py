@@ -12,7 +12,7 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
-from bru.theme       import apply_windows_98_theme
+from bru.theme       import apply_windows_xp_theme
 from bru.main_window import MainWindow
 
 
@@ -22,11 +22,11 @@ def main() -> None:
     app.setOrganizationName("BRU")
     app.setApplicationVersion("3.0.0")
 
-    font = QFont("Segoe UI", 10)
+    font = QFont("FiraCode Nerd Font", 10)
     font.setHintingPreference(QFont.PreferFullHinting)
     app.setFont(font)
 
-    apply_windows_98_theme(app)
+    apply_windows_xp_theme(app)
 
     win = MainWindow()
     win.show()
