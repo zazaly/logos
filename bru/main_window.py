@@ -22,23 +22,24 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
-    QDir, QModelIndex, Qt, QTimer,
+    Qt, QTimer,
 )
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox,
+    QDockWidget,
     QDialog, QDoubleSpinBox, QFileDialog, QGridLayout,
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTreeView,
-    QVBoxLayout, QWidget, QFileSystemModel,
+    QScrollArea, QSpinBox, QSplitter, QStatusBar,
+    QVBoxLayout, QWidget,
 )
 
 from bru.engine   import RenameEngine
 from bru.history  import HistoryEntry, HistoryManager
 from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
-from bru.theme    import COLORS
+from bru.theme    import COLORS, apply_dark_theme, apply_light_theme
 from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
     FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
@@ -107,6 +108,18 @@ class MainWindow(QMainWindow):
         a = QAction("Show History Panel", self, checkable=True, checked=True)
         a.triggered.connect(lambda v: self._history_panel.setVisible(v))
         mv.addAction(a)
+        mv.addSeparator()
+        dark_action = QAction("Solarized Dark Theme", self, checkable=True)
+        light_action = QAction("Solarized Light Theme", self, checkable=True)
+        dark_action.setChecked(True)
+        dark_action.triggered.connect(
+            lambda: self._set_theme("dark", dark_action, light_action)
+        )
+        light_action.triggered.connect(
+            lambda: self._set_theme("light", dark_action, light_action)
+        )
+        mv.addAction(dark_action)
+        mv.addAction(light_action)
 
     def _add_action(
         self, menu, label: str, shortcut: str, slot, *, enabled: bool = True
@@ -118,6 +131,23 @@ class MainWindow(QMainWindow):
         a.setEnabled(enabled)
         menu.addAction(a)
         return a
+
+    def _set_theme(
+        self, mode: str, dark_action: QAction, light_action: QAction
+    ) -> None:
+        app = QApplication.instance()
+        if app is None:
+            return
+        if mode == "dark":
+            apply_dark_theme(app)
+            dark_action.setChecked(True)
+            light_action.setChecked(False)
+            self._status.showMessage("Theme set to Solarized Dark.", 2500)
+            return
+        apply_light_theme(app)
+        dark_action.setChecked(False)
+        light_action.setChecked(True)
+        self._status.showMessage("Theme set to Solarized Light.", 2500)
 
     # ══════════════════════════════════════════════════════════════════ #
     #  UI BUILD
@@ -132,21 +162,22 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._build_path_bar())
 
-        vsplit = QSplitter(Qt.Vertical); vsplit.setHandleWidth(5)
-
         hsplit = QSplitter(Qt.Horizontal); hsplit.setHandleWidth(5)
-        hsplit.addWidget(self._build_tree_pane())
         hsplit.addWidget(self._build_table_pane())
         self._history_panel = HistoryPanel()
         self._history_panel.undo_requested.connect(self._do_undo)
         hsplit.addWidget(self._history_panel)
-        hsplit.setSizes([230, 930, 230])
+        hsplit.setSizes([1400, 260])
+        root.addWidget(hsplit, stretch=1)
 
-        vsplit.addWidget(hsplit)
-        vsplit.addWidget(self._build_controls_pane())
-        vsplit.setSizes([440, 380])
-
-        root.addWidget(vsplit, stretch=1)
+        self._controls_dock = QDockWidget("Controls", self)
+        self._controls_dock.setObjectName("controlsDock")
+        self._controls_dock.setAllowedAreas(Qt.LeftDockWidgetArea)
+        self._controls_dock.setFeatures(
+            QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable
+        )
+        self._controls_dock.setWidget(self._build_controls_pane())
+        self.addDockWidget(Qt.LeftDockWidgetArea, self._controls_dock)
         root.addWidget(self._build_action_bar())
 
         self._status = QStatusBar()
@@ -174,30 +205,6 @@ class MainWindow(QMainWindow):
         ]:
             b = QPushButton(lbl); b.setFixedWidth(w_); b.clicked.connect(slot)
             h.addWidget(b)
-        return w
-
-    # ── Tree pane ─────────────────────────────────────────────────────── #
-
-    def _build_tree_pane(self) -> QWidget:
-        w = QWidget(); v = QVBoxLayout(w)
-        v.setContentsMargins(0, 0, 0, 0); v.setSpacing(4)
-        v.addWidget(SectionLabel("Folders"))
-
-        self._fs_model = QFileSystemModel()
-        self._fs_model.setRootPath(QDir.rootPath())
-        self._fs_model.setFilter(QDir.NoDotAndDotDot | QDir.AllDirs | QDir.Drives)
-
-        self._tree = QTreeView()
-        self._tree.setModel(self._fs_model)
-        self._tree.setRootIndex(self._fs_model.index(QDir.rootPath()))
-        for col in (1, 2, 3): self._tree.setColumnHidden(col, True)
-        self._tree.setHeaderHidden(True); self._tree.setAnimated(True)
-        self._tree.setIndentation(14)
-        self._tree.clicked.connect(self._on_tree_clicked)
-
-        home_idx = self._fs_model.index(str(Path.home()))
-        self._tree.setCurrentIndex(home_idx); self._tree.scrollTo(home_idx)
-        v.addWidget(self._tree)
         return w
 
     # ── Table pane ────────────────────────────────────────────────────── #
@@ -232,20 +239,23 @@ class MainWindow(QMainWindow):
         container = QWidget()
         g = QGridLayout(container)
         g.setContentsMargins(4, 4, 4, 4); g.setSpacing(5)
-
-        g.addWidget(self._grp_regex(),     0, 0)
-        g.addWidget(self._grp_name(),      0, 1)
-        g.addWidget(self._grp_replace(),   0, 2)
-        g.addWidget(self._grp_case(),      0, 3)
-        g.addWidget(self._grp_remove(),    1, 0)
-        g.addWidget(self._grp_add(),       1, 1)
-        g.addWidget(self._grp_auto_date(), 1, 2)
-        g.addWidget(self._grp_numbering(), 1, 3)
-        g.addWidget(self._grp_move_copy(), 2, 0)
-        g.addWidget(self._grp_extension(), 2, 1)
-        g.addWidget(self._grp_filters(),   2, 2, 1, 2)
-
-        for col in range(4): g.setColumnStretch(col, 1)
+        groups = [
+            self._grp_regex(),
+            self._grp_name(),
+            self._grp_replace(),
+            self._grp_case(),
+            self._grp_remove(),
+            self._grp_add(),
+            self._grp_auto_date(),
+            self._grp_numbering(),
+            self._grp_move_copy(),
+            self._grp_extension(),
+            self._grp_filters(),
+        ]
+        for row, group in enumerate(groups):
+            g.addWidget(group, row, 0)
+        g.setColumnStretch(0, 1)
+        g.setRowStretch(len(groups), 1)
         scroll.setWidget(container)
         return scroll
 
@@ -763,11 +773,6 @@ class MainWindow(QMainWindow):
         self._file_table.populate(filtered)
         self._count_label.setText(f"{len(filtered)} files")
         self._run_preview()
-
-    def _on_tree_clicked(self, index: QModelIndex) -> None:
-        path = self._fs_model.filePath(index)
-        if os.path.isdir(path):
-            self._load_directory(path)
 
     def _on_filter_changed(self, *_) -> None:
         if self._current_dir:
