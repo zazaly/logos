@@ -28,15 +28,15 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QColor, QFont, QBrush, QPainter, QPen, QTextCursor
 
-from comiceditor.comicxml import (
+from bru.comiceditor.comicxml import (
     FIELDS, FIELD_TAGS, SECTION_ORDER, DROPDOWN_OPTIONS,
     AUTO_INCREMENT_FIELDS, empty_metadata, write_comicinfo, load_or_init_comicinfo
 )
-from comiceditor.archive import (
+from bru.comiceditor.archive import (
     scan_folder, get_temp_dir, get_extract_dir, count_pages, SUPPORTED_EXTENSIONS
 )
-from comiceditor.worker import ExtractionWorker, RepackageWorker
-from comiceditor.sidecar import generate_cover, generate_metadata_json, generate_csv_report
+from bru.comiceditor.worker import ExtractionWorker, RepackageWorker
+from bru.comiceditor.sidecar import generate_cover, generate_metadata_json, generate_csv_report
 
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -943,7 +943,7 @@ class MainWindow(QMainWindow):
         self._extract_dirs[archive.name] = extract_dir
         self.defrag.set_state(archive.name, "extracting")
 
-        from comiceditor.archive import _is_our_extract
+        from bru.comiceditor.archive import _is_our_extract
         if extract_dir.exists() and _is_our_extract(extract_dir, archive):
             self._log(f"  ↳ Cached: {archive.name}", "dim")
             self._on_file_extracted(archive, extract_dir, True, "", on_done_start_rest)

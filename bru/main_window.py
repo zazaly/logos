@@ -45,6 +45,7 @@ from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
     FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
 )
+from bru.comiceditor.ui import MainWindow as MetadataEditorMainWindow
 
 
 class MainWindow(QMainWindow):
@@ -109,7 +110,7 @@ class MainWindow(QMainWindow):
         dark_action = QAction("Solarized Dark Theme", self, checkable=True)
         light_action = QAction("Solarized Light Theme", self, checkable=True)
         win98_action = QAction("Windows 98 Theme", self, checkable=True)
-        dark_action.setChecked(True)
+        win98_action.setChecked(True)
         dark_action.triggered.connect(
             lambda: self._set_theme(
                 "dark", dark_action, light_action, win98_action
@@ -152,7 +153,7 @@ class MainWindow(QMainWindow):
             return
         if mode == "dark":
             apply_dark_theme(app)
-            dark_action.setChecked(True)
+            win98_action.setChecked(True)
             light_action.setChecked(False)
             win98_action.setChecked(False)
             self._status.showMessage("Theme set to Solarized Dark.", 2500)
@@ -214,16 +215,13 @@ class MainWindow(QMainWindow):
     def _build_metadata_tab(self) -> QWidget:
         tab = QWidget()
         v = QVBoxLayout(tab)
-        v.setContentsMargins(10, 10, 10, 10)
-        v.setSpacing(8)
-        v.addWidget(SectionLabel("Metadata"))
-        msg = QLabel(
-            "Metadata extraction is active during preview/rename.\n"
-            "Use tokens like {pdf_title}, {comic_series}, or {file_mtime} in Rename tab."
-        )
-        msg.setWordWrap(True)
-        v.addWidget(msg)
-        v.addStretch()
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+
+        self._metadata_window = MetadataEditorMainWindow()
+        self._metadata_window.setWindowFlags(Qt.Widget)
+        self._metadata_window.setParent(tab)
+        v.addWidget(self._metadata_window)
         return tab
 
     def _build_history_tab(self) -> QWidget:

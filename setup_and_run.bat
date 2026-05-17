@@ -2,11 +2,10 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo  Comic Bulk Metadata Editor - Setup
+echo  Bulk Rename Utility + Metadata Editor Setup
 echo ============================================
 echo.
 
-REM Find Python - try py launcher first (handles multiple versions), then python
 set PYTHON=
 where py >nul 2>&1 && set PYTHON=py
 if "!PYTHON!"=="" (
@@ -25,10 +24,9 @@ echo Using Python: !PYTHON!
 !PYTHON! --version
 echo.
 
-REM Install dependencies
 echo Installing dependencies...
 !PYTHON! -m pip install --upgrade pip -q
-!PYTHON! -m pip install -r requirements.txt
+!PYTHON! -m pip install -e ".[dev]"
 if errorlevel 1 (
     echo.
     echo ERROR: Failed to install dependencies.
@@ -43,7 +41,7 @@ echo  Setup complete! Launching application...
 echo ============================================
 echo.
 
-!PYTHON! main.py
+!PYTHON! -m bru
 if errorlevel 1 (
     echo.
     echo Application exited with an error.

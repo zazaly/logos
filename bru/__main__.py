@@ -12,7 +12,7 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
-from bru.theme       import apply_dark_theme
+from bru.theme       import apply_windows_98_theme
 from bru.main_window import MainWindow
 
 
@@ -26,7 +26,7 @@ def main() -> None:
     font.setHintingPreference(QFont.PreferFullHinting)
     app.setFont(font)
 
-    apply_dark_theme(app)
+    apply_windows_98_theme(app)
 
     win = MainWindow()
     win.show()
