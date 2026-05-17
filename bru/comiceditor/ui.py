@@ -405,6 +405,21 @@ class ConsoleLog(QTextEdit):
 
 # ── Row action buttons ────────────────────────────────────────────────────────
 
+_DEFAULT_ACTION_ICONS = {"update": "♻", "mirror": "⇄", "auto": "∑", "clear": "✕"}
+
+def _resolve_action_icon_font(preferred: str | None = None) -> str:
+    families = set(QFontDatabase().families())
+    for candidate in (preferred, "Segoe UI Symbol", "Noto Color Emoji", "Segoe UI Emoji", "Arial Unicode MS"):
+        if candidate and candidate in families:
+            return candidate
+    return QFont().family()
+
+
+def _normalize_action_icons(icons: dict[str, str] | None = None) -> dict[str, str]:
+    merged = dict(_DEFAULT_ACTION_ICONS)
+    merged.update({k: v for k, v in (icons or {}).items() if v})
+    return merged
+
 class RowActionWidget(QWidget):
     update_clicked = Signal(int)
     mirror_clicked = Signal(int)
@@ -414,7 +429,7 @@ class RowActionWidget(QWidget):
     def __init__(self, row: int, icons: dict[str, str] | None = None, icon_font: str = "Noto Color Emoji", parent=None):
         super().__init__(parent)
         self._row = row
-        icon_map = icons or {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
+        icon_map = _normalize_action_icons(icons)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(2, 1, 2, 1)
         lay.setSpacing(2)
@@ -427,7 +442,7 @@ class RowActionWidget(QWidget):
         for btn in (self.btn_u, self.btn_m, self.btn_a, self.btn_c):
             btn.setObjectName("row_btn")
             btn.setFixedSize(QSize(26, 22))
-            btn.setFont(QFont(icon_font, 11))
+            btn.setFont(QFont(_resolve_action_icon_font(icon_font), 11))
 
         self.btn_u.setToolTip("Update — flash to confirm first-column value")
         self.btn_m.setToolTip("Mirror — copy col 1 value to ALL other columns")
@@ -487,7 +502,7 @@ FIRST_FILE_COL = 2
 
 class MetadataTable(QTableWidget):
     log_message = Signal(str, str)   # message, level
-    DEFAULT_ACTION_ICONS = {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
+    DEFAULT_ACTION_ICONS = dict(_DEFAULT_ACTION_ICONS)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -511,7 +526,7 @@ class MetadataTable(QTableWidget):
         self._files: list[Path] = []
         self._section_start: dict[str, int] = {}
         self._action_icons = dict(self.DEFAULT_ACTION_ICONS)
-        self._action_icon_font = "Noto Color Emoji"
+        self._action_icon_font = _resolve_action_icon_font("Noto Color Emoji")
 
     # ── Build rows ────────────────────────────────────────────────────────────
 
@@ -577,9 +592,8 @@ class MetadataTable(QTableWidget):
         self.horizontalHeader().setSectionResizeMode(ACTION_COL, QHeaderView.Fixed)
 
     def set_action_icons(self, icons: dict[str, str], icon_font: str = "Noto Color Emoji") -> None:
-        self._action_icons = dict(self.DEFAULT_ACTION_ICONS)
-        self._action_icons.update({k: v for k, v in (icons or {}).items() if v})
-        self._action_icon_font = icon_font or "Noto Color Emoji"
+        self._action_icons = _normalize_action_icons(icons)
+        self._action_icon_font = _resolve_action_icon_font(icon_font)
         for row, tag in enumerate(self._row_map):
             if tag is None or row in self._section_rows:
                 continue
@@ -590,7 +604,7 @@ class MetadataTable(QTableWidget):
                 widget.btn_a.setText(self._action_icons["auto"])
                 widget.btn_c.setText(self._action_icons["clear"])
                 for btn in (widget.btn_u, widget.btn_m, widget.btn_a, widget.btn_c):
-                    btn.setFont(QFont(self._action_icon_font, 11))
+                    btn.setFont(QFont(_resolve_action_icon_font(self._action_icon_font), 11))
 
     # ── Column management ─────────────────────────────────────────────────────
 
