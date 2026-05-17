@@ -27,11 +27,10 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox,
-    QDockWidget,
     QDialog, QDoubleSpinBox, QFileDialog, QGridLayout,
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar,
+    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -39,7 +38,9 @@ from bru.engine   import RenameEngine
 from bru.history  import HistoryEntry, HistoryManager
 from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
-from bru.theme    import COLORS, apply_dark_theme, apply_light_theme
+from bru.theme    import (
+    COLORS, apply_dark_theme, apply_light_theme, apply_windows_98_theme,
+)
 from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
     FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
@@ -105,21 +106,28 @@ class MainWindow(QMainWindow):
 
         # View
         mv = mb.addMenu("View")
-        a = QAction("Show History Panel", self, checkable=True, checked=True)
-        a.triggered.connect(lambda v: self._history_panel.setVisible(v))
-        mv.addAction(a)
-        mv.addSeparator()
         dark_action = QAction("Solarized Dark Theme", self, checkable=True)
         light_action = QAction("Solarized Light Theme", self, checkable=True)
+        win98_action = QAction("Windows 98 Theme", self, checkable=True)
         dark_action.setChecked(True)
         dark_action.triggered.connect(
-            lambda: self._set_theme("dark", dark_action, light_action)
+            lambda: self._set_theme(
+                "dark", dark_action, light_action, win98_action
+            )
         )
         light_action.triggered.connect(
-            lambda: self._set_theme("light", dark_action, light_action)
+            lambda: self._set_theme(
+                "light", dark_action, light_action, win98_action
+            )
+        )
+        win98_action.triggered.connect(
+            lambda: self._set_theme(
+                "win98", dark_action, light_action, win98_action
+            )
         )
         mv.addAction(dark_action)
         mv.addAction(light_action)
+        mv.addAction(win98_action)
 
     def _add_action(
         self, menu, label: str, shortcut: str, slot, *, enabled: bool = True
@@ -133,7 +141,11 @@ class MainWindow(QMainWindow):
         return a
 
     def _set_theme(
-        self, mode: str, dark_action: QAction, light_action: QAction
+        self,
+        mode: str,
+        dark_action: QAction,
+        light_action: QAction,
+        win98_action: QAction,
     ) -> None:
         app = QApplication.instance()
         if app is None:
@@ -142,12 +154,21 @@ class MainWindow(QMainWindow):
             apply_dark_theme(app)
             dark_action.setChecked(True)
             light_action.setChecked(False)
+            win98_action.setChecked(False)
             self._status.showMessage("Theme set to Solarized Dark.", 2500)
             return
-        apply_light_theme(app)
+        if mode == "light":
+            apply_light_theme(app)
+            dark_action.setChecked(False)
+            light_action.setChecked(True)
+            win98_action.setChecked(False)
+            self._status.showMessage("Theme set to Solarized Light.", 2500)
+            return
+        apply_windows_98_theme(app)
         dark_action.setChecked(False)
-        light_action.setChecked(True)
-        self._status.showMessage("Theme set to Solarized Light.", 2500)
+        light_action.setChecked(False)
+        win98_action.setChecked(True)
+        self._status.showMessage("Theme set to Windows 98.", 2500)
 
     # ══════════════════════════════════════════════════════════════════ #
     #  UI BUILD
@@ -160,25 +181,11 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(8, 4, 8, 6)
         root.setSpacing(5)
 
-        root.addWidget(self._build_path_bar())
-
-        hsplit = QSplitter(Qt.Horizontal); hsplit.setHandleWidth(5)
-        hsplit.addWidget(self._build_table_pane())
-        self._history_panel = HistoryPanel()
-        self._history_panel.undo_requested.connect(self._do_undo)
-        hsplit.addWidget(self._history_panel)
-        hsplit.setSizes([1400, 260])
-        root.addWidget(hsplit, stretch=1)
-
-        self._controls_dock = QDockWidget("Controls", self)
-        self._controls_dock.setObjectName("controlsDock")
-        self._controls_dock.setAllowedAreas(Qt.LeftDockWidgetArea)
-        self._controls_dock.setFeatures(
-            QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable
-        )
-        self._controls_dock.setWidget(self._build_controls_pane())
-        self.addDockWidget(Qt.LeftDockWidgetArea, self._controls_dock)
-        root.addWidget(self._build_action_bar())
+        tabs = QTabWidget()
+        tabs.addTab(self._build_rename_tab(), "Rename")
+        tabs.addTab(self._build_metadata_tab(), "Metadata")
+        tabs.addTab(self._build_history_tab(), "History")
+        root.addWidget(tabs, stretch=1)
 
         self._status = QStatusBar()
         self._progress = QProgressBar()
@@ -187,6 +194,46 @@ class MainWindow(QMainWindow):
         self._status.addPermanentWidget(self._progress)
         self.setStatusBar(self._status)
         self._status.showMessage("Ready — select a folder to begin.")
+
+    def _build_rename_tab(self) -> QWidget:
+        tab = QWidget()
+        v = QVBoxLayout(tab)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(5)
+        v.addWidget(self._build_path_bar())
+
+        hsplit = QSplitter(Qt.Horizontal)
+        hsplit.setHandleWidth(5)
+        hsplit.addWidget(self._build_controls_pane())
+        hsplit.addWidget(self._build_table_pane())
+        hsplit.setSizes([500, 1400])
+        v.addWidget(hsplit, stretch=1)
+        v.addWidget(self._build_action_bar())
+        return tab
+
+    def _build_metadata_tab(self) -> QWidget:
+        tab = QWidget()
+        v = QVBoxLayout(tab)
+        v.setContentsMargins(10, 10, 10, 10)
+        v.setSpacing(8)
+        v.addWidget(SectionLabel("Metadata"))
+        msg = QLabel(
+            "Metadata extraction is active during preview/rename.\n"
+            "Use tokens like {pdf_title}, {comic_series}, or {file_mtime} in Rename tab."
+        )
+        msg.setWordWrap(True)
+        v.addWidget(msg)
+        v.addStretch()
+        return tab
+
+    def _build_history_tab(self) -> QWidget:
+        tab = QWidget()
+        v = QVBoxLayout(tab)
+        v.setContentsMargins(0, 0, 0, 0)
+        self._history_panel = HistoryPanel()
+        self._history_panel.undo_requested.connect(self._do_undo)
+        v.addWidget(self._history_panel)
+        return tab
 
     # ── Path bar ──────────────────────────────────────────────────────── #
 

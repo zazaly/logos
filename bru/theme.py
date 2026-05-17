@@ -6,7 +6,7 @@ Solarized colour palettes and QSS stylesheet generator.
 from __future__ import annotations
 
 from PySide6.QtGui import QColor, QFont, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QStyleFactory
 
 SOLARIZED_DARK: dict[str, str] = {
     "BG": "#002b36",
@@ -205,3 +205,38 @@ def apply_dark_theme(app: QApplication) -> None:
 
 def apply_light_theme(app: QApplication) -> None:
     apply_theme(app, SOLARIZED_LIGHT)
+
+
+def apply_windows_98_theme(app: QApplication) -> None:
+    """Apply a classic Windows 98 inspired palette/theme."""
+    app.setStyle(QStyleFactory.create("Windows"))
+    app.setStyleSheet("")
+    pal = QPalette()
+    pal.setColor(QPalette.Window, QColor("#C0C0C0"))
+    pal.setColor(QPalette.WindowText, QColor("#000000"))
+    pal.setColor(QPalette.Base, QColor("#FFFFFF"))
+    pal.setColor(QPalette.AlternateBase, QColor("#E0E0E0"))
+    pal.setColor(QPalette.Text, QColor("#000000"))
+    pal.setColor(QPalette.Button, QColor("#C0C0C0"))
+    pal.setColor(QPalette.ButtonText, QColor("#000000"))
+    pal.setColor(QPalette.Highlight, QColor("#000080"))
+    pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
+    pal.setColor(QPalette.PlaceholderText, QColor("#808080"))
+    app.setPalette(pal)
+    app.setFont(QFont("MS Sans Serif", 9))
+    COLORS.clear()
+    COLORS.update({
+        "BG": "#C0C0C0",
+        "BG2": "#D4D0C8",
+        "BG3": "#FFFFFF",
+        "BG4": "#DFDFDF",
+        "FG": "#000000",
+        "ACC": "#000080",
+        "ACC2": "#000080",
+        "MUT": "#606060",
+        "SEL": "#000080",
+        "BORD": "#808080",
+        "WARN": "#7A4B00",
+        "ERR": "#A00000",
+        "OK": "#008000",
+    })
