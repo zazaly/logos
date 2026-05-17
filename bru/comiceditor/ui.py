@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QFrame, QSplitter
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QSize
-from PySide6.QtGui import QColor, QFont, QBrush, QPainter, QPen, QTextCursor
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QBrush, QPainter, QPen, QTextCursor
 
 from bru.theme import COLORS
 
@@ -405,11 +405,21 @@ class ConsoleLog(QTextEdit):
 
 # ── Row action buttons ────────────────────────────────────────────────────────
 
-_DEFAULT_ACTION_ICONS = {"update": "♻", "mirror": "⇄", "auto": "∑", "clear": "✕"}
+_DEFAULT_ACTION_ICONS = {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
 
 def _resolve_action_icon_font(preferred: str | None = None) -> str:
     families = set(QFontDatabase().families())
-    for candidate in (preferred, "Segoe UI Symbol", "Noto Color Emoji", "Segoe UI Emoji", "Arial Unicode MS"):
+    candidates = (
+        preferred,
+        "Segoe UI Emoji",
+        "Apple Color Emoji",
+        "Noto Color Emoji",
+        "Noto Emoji",
+        "Twemoji Mozilla",
+        "Segoe UI Symbol",
+        "Arial Unicode MS",
+    )
+    for candidate in candidates:
         if candidate and candidate in families:
             return candidate
     return QFont().family()
