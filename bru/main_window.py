@@ -40,7 +40,7 @@ from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
 from bru.theme    import COLORS
 from bru.widgets  import (
-    COL_ENABLE, COL_NEW, COL_ORIG, COL_STATUS,
+    COL_NEW, COL_ORIG, COL_STATUS,
     FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
 )
 
@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
         self._preview_timer.timeout.connect(self._run_preview)
 
         self.setWindowTitle("Bulk Rename Utility  v3")
-        self.resize(1460, 920)
+        self.resize(1920, 826)
 
         self._build_ui()
         self._build_menu()
@@ -212,13 +212,6 @@ class MainWindow(QMainWindow):
         tb = QWidget(); th = QHBoxLayout(tb)
         th.setContentsMargins(0, 0, 0, 0); th.setSpacing(4)
         th.addWidget(SectionLabel("Files"))
-        for lbl, slot in [
-            ("All",    lambda: self._file_table.set_all_enabled(True)),
-            ("None",   lambda: self._file_table.set_all_enabled(False)),
-            ("Invert", self._file_table.invert_enabled),
-        ]:
-            b = QPushButton(lbl); b.setFixedSize(46, 24)
-            b.clicked.connect(slot); th.addWidget(b)
         th.addStretch()
         self._count_label = QLabel("")
         self._count_label.setStyleSheet(
@@ -289,7 +282,24 @@ class MainWindow(QMainWindow):
 
     def _gl(self, parent: QGroupBox) -> QGridLayout:
         g = QGridLayout(parent); g.setSpacing(4); g.setContentsMargins(8, 18, 8, 8)
+        reset_btn = QPushButton("R")
+        reset_btn.setFixedSize(18, 18)
+        reset_btn.setToolTip("Reset this group")
+        reset_btn.clicked.connect(lambda: self._reset_group(parent))
+        g.addWidget(reset_btn, 0, 99, alignment=Qt.AlignRight)
         return g
+
+    def _reset_group(self, group: QGroupBox) -> None:
+        for widget in group.findChildren((QLineEdit, QSpinBox, QComboBox, QCheckBox)):
+            if isinstance(widget, QLineEdit):
+                widget.clear()
+            elif isinstance(widget, QSpinBox):
+                widget.setValue(0)
+            elif isinstance(widget, QComboBox):
+                widget.setCurrentIndex(0)
+            elif isinstance(widget, QCheckBox):
+                widget.setChecked(False)
+        self._schedule_preview()
 
     # ── RegEx (1) ─────────────────────────────────────────────────────── #
 
