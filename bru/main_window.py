@@ -33,14 +33,14 @@ from PySide6.QtWidgets import (
     QScrollArea, QSpinBox, QSplitter, QStatusBar, QTabWidget, QTextEdit,
     QVBoxLayout, QWidget,
 )
+from PySide6.QtGui import QCloseEvent
 
 from bru.engine   import RenameEngine
 from bru.history  import HistoryEntry, HistoryManager
 from bru.metadata import MetadataExtractor
 from bru.presets  import PresetManager
 from bru.theme    import (
-    COLORS, THEMES_DIR, apply_dark_theme, apply_light_theme, apply_theme,
-    apply_windows_xp_theme, load_cosmic_ron_palette,
+    COLORS, THEMES_DIR, apply_theme, load_cosmic_ron_palette,
 )
 from bru.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
@@ -79,23 +79,18 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is None:
             return
-        if mode == "dark":
-            apply_dark_theme(app)
-            self._status.showMessage("Theme set to Solarized Dark.", 2500)
-        elif mode == "light":
-            apply_light_theme(app)
-            self._status.showMessage("Theme set to Solarized Light.", 2500)
-        elif mode.startswith("ron:"):
+
+        if not mode.startswith("ron:"):
+            mode = next(iter(self._theme_choices.values()), "")
+
+        if mode.startswith("ron:"):
             ron_path = mode.removeprefix("ron:")
             try:
                 apply_theme(app, load_cosmic_ron_palette(ron_path))
                 self._status.showMessage(f"Theme loaded from {Path(ron_path).name}.", 2500)
             except Exception as exc:
                 self._status.showMessage(f"Failed to load theme: {exc}", 4000)
-                apply_windows_xp_theme(app)
-        else:
-            apply_windows_xp_theme(app)
-            self._status.showMessage("Theme set to Windows XP.", 2500)
+
         self._metadata_window.setStyleSheet(app.styleSheet())
         self._save_settings()
 
@@ -182,6 +177,9 @@ class MainWindow(QMainWindow):
         self._settings_path_edit = QLineEdit()
         self._settings_path_edit.editingFinished.connect(self._save_settings)
         g.addWidget(self._settings_path_edit, 1, 1)
+        self._always_on_top = QCheckBox("Always on top")
+        self._always_on_top.toggled.connect(self._on_always_on_top_toggled)
+        g.addWidget(self._always_on_top, 2, 0, 1, 2)
         g.setColumnStretch(1, 1)
         return tab
 
@@ -189,14 +187,10 @@ class MainWindow(QMainWindow):
         self._history_console.append(msg)
 
     def _on_theme_combo_changed(self, label: str) -> None:
-        self._set_theme(self._theme_choices.get(label, "xp"))
+        self._set_theme(self._theme_choices.get(label, ""))
 
     def _refresh_theme_choices(self) -> None:
-        self._theme_choices = {
-            "Windows XP": "xp",
-            "Solarized Dark": "dark",
-            "Solarized Light": "light",
-        }
+        self._theme_choices = {}
         if THEMES_DIR.exists():
             for ron_file in sorted(THEMES_DIR.glob("**/*.ron")):
                 label = f"COSMIC • {ron_file.stem}"
@@ -204,23 +198,58 @@ class MainWindow(QMainWindow):
 
     def _load_settings(self) -> None:
         default_downloads = str(Path.home() / "Downloads")
-        settings = {"theme": "xp", "default_path": default_downloads}
+        default_theme = next(iter(self._theme_choices.values()), "")
+        settings = {
+            "theme": default_theme,
+            "default_path": default_downloads,
+            "last_directory": default_downloads,
+            "always_on_top": False,
+            "window": {"x": 100, "y": 100, "w": 1920, "h": 826},
+        }
         if self._settings_path.exists():
             try:
                 settings.update(json.loads(self._settings_path.read_text(encoding="utf-8")))
             except Exception:
                 pass
         self._settings_path_edit.setText(settings.get("default_path", default_downloads))
-        self._current_dir = settings.get("default_path", default_downloads)
-        selected_theme = settings.get("theme", "xp")
+        self._current_dir = settings.get("last_directory") or settings.get("default_path", default_downloads)
+        always_on_top = bool(settings.get("always_on_top", False))
+        self._always_on_top.blockSignals(True)
+        self._always_on_top.setChecked(always_on_top)
+        self._always_on_top.blockSignals(False)
+        self._apply_always_on_top(always_on_top)
+        window = settings.get("window", {})
+        self.setGeometry(
+            int(window.get("x", 100)),
+            int(window.get("y", 100)),
+            int(window.get("w", 1920)),
+            int(window.get("h", 826)),
+        )
+        selected_theme = settings.get("theme", default_theme)
         reverse = {value: key for key, value in self._theme_choices.items()}
-        self._theme_combo.setCurrentText(reverse.get(selected_theme, "Windows XP"))
+        self._theme_combo.setCurrentText(reverse.get(selected_theme, next(iter(self._theme_choices.keys()), "")))
         self._set_theme(selected_theme)
 
     def _save_settings(self) -> None:
-        data = {"theme": self._theme_choices.get(self._theme_combo.currentText(), "xp"),
-                "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads")}
+        g = self.geometry()
+        data = {"theme": self._theme_choices.get(self._theme_combo.currentText(), next(iter(self._theme_choices.values()), "")),
+                "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads"),
+                "last_directory": self._current_dir,
+                "always_on_top": self._always_on_top.isChecked(),
+                "window": {"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()}}
         self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _on_always_on_top_toggled(self, checked: bool) -> None:
+        self._apply_always_on_top(checked)
+        self._save_settings()
+
+    def _apply_always_on_top(self, enabled: bool) -> None:
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, enabled)
+        self.show()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_settings()
+        super().closeEvent(event)
 
     # ── Path bar ──────────────────────────────────────────────────────── #
 

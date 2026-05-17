@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QColor, QFont, QBrush, QPainter, QPen, QTextCursor
 
+from bru.theme import COLORS
+
 from bru.comiceditor.comicxml import (
     FIELDS, FIELD_TAGS, SECTION_ORDER, DROPDOWN_OPTIONS,
     AUTO_INCREMENT_FIELDS, empty_metadata, write_comicinfo, load_or_init_comicinfo
@@ -416,7 +418,7 @@ class RowActionWidget(QWidget):
         lay.setContentsMargins(2, 1, 2, 1)
         lay.setSpacing(2)
 
-        self.btn_u = QPushButton("♻")
+        self.btn_u = QPushButton("♻️")
         self.btn_m = QPushButton("🔍")
         self.btn_a = QPushButton("🧮")
         self.btn_c = QPushButton("🧹")
@@ -424,6 +426,7 @@ class RowActionWidget(QWidget):
         for btn in (self.btn_u, self.btn_m, self.btn_a, self.btn_c):
             btn.setObjectName("row_btn")
             btn.setFixedSize(QSize(26, 22))
+            btn.setFont(QFont("Noto Color Emoji", 11))
 
         self.btn_u.setToolTip("Update — flash to confirm first-column value")
         self.btn_m.setToolTip("Mirror — copy col 1 value to ALL other columns")
@@ -814,7 +817,6 @@ class MainWindow(QMainWindow):
 
         self._show_console = show_console
         self._build_ui()
-        self.setStyleSheet(STYLE)
 
     def _build_ui(self):
         # Toolbar
