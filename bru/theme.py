@@ -1,35 +1,47 @@
 """
 bru.theme
 =========
-Dark colour palette and QSS stylesheet generator.
-
-Usage
------
-    from bru.theme import apply_dark_theme, COLORS
-    apply_dark_theme(app)        # call once after QApplication is created
-    accent = COLORS["ACC"]       # "#4f9ef8"
+Solarized colour palettes and QSS stylesheet generator.
 """
 from __future__ import annotations
 
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
-# ── Colour tokens ─────────────────────────────────────────────────────────── #
-COLORS: dict[str, str] = {
-    "BG":   "#161b22",   # deepest background
-    "BG2":  "#1e2530",   # panel background
-    "BG3":  "#252d3a",   # input / group background
-    "BG4":  "#2d3748",   # header / button background
-    "FG":   "#e2e8f0",   # primary foreground
-    "ACC":  "#4f9ef8",   # accent blue (focus rings, interactive)
-    "ACC2": "#22d3ee",   # accent cyan (preview highlights)
-    "MUT":  "#5a6a82",   # muted / placeholder text
-    "SEL":  "#1a3a5c",   # selection background
-    "BORD": "#2d4060",   # borders and dividers
-    "WARN": "#f59e0b",   # warnings (conflict, undo)
-    "ERR":  "#f87171",   # errors
-    "OK":   "#34d399",   # success / will-rename indicator
+SOLARIZED_DARK: dict[str, str] = {
+    "BG": "#002b36",
+    "BG2": "#073642",
+    "BG3": "#0b3c49",
+    "BG4": "#145766",
+    "FG": "#eee8d5",
+    "ACC": "#268bd2",
+    "ACC2": "#2aa198",
+    "MUT": "#93a1a1",
+    "SEL": "#094a5a",
+    "BORD": "#1f5f6f",
+    "WARN": "#b58900",
+    "ERR": "#dc322f",
+    "OK": "#859900",
 }
+
+SOLARIZED_LIGHT: dict[str, str] = {
+    "BG": "#fdf6e3",
+    "BG2": "#eee8d5",
+    "BG3": "#e6dfcc",
+    "BG4": "#d8d0bb",
+    "FG": "#586e75",
+    "ACC": "#268bd2",
+    "ACC2": "#2aa198",
+    "MUT": "#657b83",
+    "SEL": "#cfe8f6",
+    "BORD": "#c2b8a3",
+    "WARN": "#b58900",
+    "ERR": "#dc322f",
+    "OK": "#859900",
+}
+
+# Default runtime palette used by widgets that reference COLORS directly.
+COLORS: dict[str, str] = dict(SOLARIZED_DARK)
 
 
 def _build_stylesheet(c: dict[str, str]) -> str:
@@ -167,8 +179,10 @@ def _build_stylesheet(c: dict[str, str]) -> str:
     """
 
 
-def apply_dark_theme(app: QApplication) -> None:
-    """Apply palette + stylesheet to a QApplication instance."""
+def apply_theme(app: QApplication, palette: dict[str, str]) -> None:
+    """Apply a palette + stylesheet to a QApplication instance."""
+    COLORS.clear()
+    COLORS.update(palette)
     c = COLORS
     pal = QPalette()
     pal.setColor(QPalette.Window,          QColor(c["BG"]))
@@ -183,3 +197,11 @@ def apply_dark_theme(app: QApplication) -> None:
     pal.setColor(QPalette.PlaceholderText, QColor(c["MUT"]))
     app.setPalette(pal)
     app.setStyleSheet(_build_stylesheet(c))
+
+
+def apply_dark_theme(app: QApplication) -> None:
+    apply_theme(app, SOLARIZED_DARK)
+
+
+def apply_light_theme(app: QApplication) -> None:
+    apply_theme(app, SOLARIZED_LIGHT)
