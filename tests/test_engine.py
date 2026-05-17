@@ -1,7 +1,7 @@
 """
 tests/test_engine.py
 ====================
-Unit tests for bru.engine.RenameEngine.
+Unit tests for studio.engine.RenameEngine.
 
 Run with:
     pytest tests/test_engine.py -v
@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import pytest
 
-from bru.engine import RenameEngine
+from studio.engine import RenameEngine
 
 
 @pytest.fixture
@@ -383,7 +383,7 @@ class TestPipeline:
 
 class TestHistory:
     def test_push_and_undo(self, tmp_path):
-        from bru.history import HistoryEntry, HistoryManager
+        from studio.history import HistoryEntry, HistoryManager
         # Create a real file so undo can actually rename it back
         src = tmp_path / "new.txt"
         src.write_text("x")
@@ -396,14 +396,14 @@ class TestHistory:
         assert not mgr.can_undo()
 
     def test_capacity(self):
-        from bru.history import HistoryEntry, HistoryManager
+        from studio.history import HistoryEntry, HistoryManager
         mgr = HistoryManager(max_entries=3)
         for i in range(5):
             mgr.push(HistoryEntry("/tmp", [(f"a{i}.txt", f"b{i}.txt")]))
         assert len(mgr.visible_entries()) == 3
 
     def test_undo_reverses_rename(self, tmp_path):
-        from bru.history import HistoryEntry, HistoryManager
+        from studio.history import HistoryEntry, HistoryManager
         orig = tmp_path / "original.txt"
         new_ = tmp_path / "renamed.txt"
         orig.write_text("hello")
@@ -426,7 +426,7 @@ class TestPresets:
         """
         Patch QSettings to store in tmp_path so tests stay isolated.
         """
-        from bru.presets import PresetManager
+        from studio.presets import PresetManager
 
         # Redirect the preset file to a temp location
         fake_preset_path = tmp_path / "presets.json"
@@ -451,7 +451,7 @@ class TestPresets:
         assert "my preset" not in mgr.names()
 
     def test_rename_preset(self, tmp_path):
-        from bru.presets import PresetManager
+        from studio.presets import PresetManager
         fake_path = tmp_path / "presets.json"
 
         class _PM(PresetManager):

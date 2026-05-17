@@ -28,14 +28,14 @@ dev = [
 ]
 
 [project.scripts]
-bru = "bru.__main__:main"
+studio = "studio.__main__:main"
 
 [project.gui-scripts]
-bulk-rename = "bru.__main__:main"
+bulk-rename = "studio.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["bru*"]
+include = ["studio*"]
 
 # ── pytest ────────────────────────────────────────────────────────────────── #
 [tool.pytest.ini_options]

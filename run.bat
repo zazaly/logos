@@ -15,4 +15,4 @@ if "%PYTHON%"=="" (
     exit /b 1
 )
 
-%PYTHON% -m bru
+%PYTHON% -m studio

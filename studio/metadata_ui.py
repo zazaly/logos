@@ -28,17 +28,17 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QBrush, QPainter, QPen, QTextCursor
 
-from bru.theme import COLORS
+from studio.theme import COLORS
 
-from bru.comiceditor.comicxml import (
+from studio.metadata_comicxml import (
     FIELDS, FIELD_TAGS, SECTION_ORDER, DROPDOWN_OPTIONS,
     AUTO_INCREMENT_FIELDS, empty_metadata, write_comicinfo, load_or_init_comicinfo
 )
-from bru.comiceditor.archive import (
+from studio.metadata_archive import (
     scan_folder, get_temp_dir, get_extract_dir, count_pages, SUPPORTED_EXTENSIONS
 )
-from bru.comiceditor.worker import ExtractionWorker, RepackageWorker
-from bru.comiceditor.sidecar import generate_cover, generate_metadata_json, generate_csv_report
+from studio.metadata_worker import ExtractionWorker, RepackageWorker
+from studio.metadata_sidecar import generate_cover, generate_metadata_json, generate_csv_report
 
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ class ConsoleLog(QTextEdit):
 
 # ── Row action buttons ────────────────────────────────────────────────────────
 
-_DEFAULT_ACTION_ICONS = {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
+_DEFAULT_ACTION_ICONS = {"update": "update", "mirror": "mirror", "auto": "auto", "clear": "clear"}
 
 def _resolve_action_icon_font(preferred: str | None = None) -> str:
     families = set(QFontDatabase().families())
@@ -444,14 +444,15 @@ class RowActionWidget(QWidget):
         lay.setContentsMargins(2, 1, 2, 1)
         lay.setSpacing(2)
 
-        self.btn_u = QPushButton(icon_map.get("update", "♻️"))
-        self.btn_m = QPushButton(icon_map.get("mirror", "🔍"))
-        self.btn_a = QPushButton(icon_map.get("auto", "🧮"))
-        self.btn_c = QPushButton(icon_map.get("clear", "🧹"))
+        self.btn_u = QPushButton(icon_map.get("update", "update"))
+        self.btn_m = QPushButton(icon_map.get("mirror", "mirror"))
+        self.btn_a = QPushButton(icon_map.get("auto", "auto"))
+        self.btn_c = QPushButton(icon_map.get("clear", "clear"))
 
         for btn in (self.btn_u, self.btn_m, self.btn_a, self.btn_c):
             btn.setObjectName("row_btn")
-            btn.setFixedSize(QSize(26, 22))
+            btn.setFixedHeight(22)
+            btn.setMinimumWidth(52)
             btn.setFont(QFont(_resolve_action_icon_font(icon_font), 11))
 
         self.btn_u.setToolTip("Update — flash to confirm first-column value")
@@ -997,7 +998,7 @@ class MainWindow(QMainWindow):
         self._extract_dirs[archive.name] = extract_dir
         self.defrag.set_state(archive.name, "extracting")
 
-        from bru.comiceditor.archive import _is_our_extract
+        from studio.metadata_archive import _is_our_extract
         if extract_dir.exists() and _is_our_extract(extract_dir, archive):
             self._log(f"  ↳ Cached: {archive.name}", "dim")
             self._on_file_extracted(archive, extract_dir, True, "", on_done_start_rest)

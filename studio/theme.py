@@ -1,5 +1,5 @@
 """
-bru.theme
+studio.theme
 =========
 Solarized colour palettes and QSS stylesheet generator.
 """

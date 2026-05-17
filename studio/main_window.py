@@ -1,5 +1,5 @@
 """
-bru.main_window
+studio.main_window
 ===============
 MainWindow — the top-level PySide6 window.
 
@@ -38,18 +38,18 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QCloseEvent
 
-from bru.engine   import RenameEngine
-from bru.history  import HistoryEntry, HistoryManager
-from bru.metadata import MetadataExtractor
-from bru.presets  import PresetManager
-from bru.theme    import (
+from studio.engine   import RenameEngine
+from studio.history  import HistoryEntry, HistoryManager
+from studio.metadata import MetadataExtractor
+from studio.presets  import PresetManager
+from studio.theme    import (
     COLORS, THEMES_DIR, apply_theme, load_cosmic_ron_palette,
 )
-from bru.widgets  import (
+from studio.widgets  import (
     COL_NEW, COL_ORIG, COL_STATUS,
     FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
 )
-from bru.comiceditor.ui import MainWindow as MetadataEditorMainWindow
+from studio.metadata_ui import MainWindow as MetadataEditorMainWindow
 
 
 class MainWindow(QMainWindow):
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         self._settings_path = Path(__file__).resolve().parent.parent / "settings.json"
         self._meta_cache: dict[str, dict]   = {}
         self._theme_choices: dict[str, str] = {}
-        self._history_preview_dir = Path(tempfile.mkdtemp(prefix="bru_history_preview_"))
+        self._history_preview_dir = Path(tempfile.mkdtemp(prefix="studio_history_preview_"))
 
         # Debounce: fire preview 150 ms after the last control change
         self._preview_timer = QTimer(singleShot=True, interval=150)
@@ -213,7 +213,7 @@ class MainWindow(QMainWindow):
 
     def _load_settings(self) -> None:
         default_downloads = str(Path.home() / "Downloads")
-        default_theme = next(iter(self._theme_choices.values()), "")
+        default_theme = self._theme_choices.get("COSMIC • Windows 10 Light", next(iter(self._theme_choices.values()), ""))
         settings = {
             "theme": default_theme,
             "default_path": default_downloads,

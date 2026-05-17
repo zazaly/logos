@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from bru.engine  import RenameEngine
-from bru.history import HistoryEntry, HistoryManager
+from studio.engine  import RenameEngine
+from studio.history import HistoryEntry, HistoryManager
 
 
 # ══════════════════════════════════════════════════════════════════════════════
