@@ -24,7 +24,7 @@ def generate_cover(
     If output_dir is given, the file is placed there; otherwise next to the archive.
     Returns the output path.
     """
-    from comiceditor.archive import get_cover_image
+    from bru.comiceditor.archive import get_cover_image
 
     dest = output_dir if output_dir is not None else original_archive.parent
     out_path = dest / f"{original_archive.stem}.cover.jpg"
@@ -107,7 +107,7 @@ def generate_metadata_json(
     dest = output_dir if output_dir is not None else original_archive.parent
     out_path = dest / f"{original_archive.stem}.metadata.json"
 
-    from comiceditor.comicxml import FIELDS
+    from bru.comiceditor.comicxml import FIELDS
     json_data: dict = {}
     for tag, _, _, ftype in FIELDS:
         val = metadata.get(tag, "")
@@ -138,7 +138,7 @@ def generate_csv_report(all_metadata: dict[str, dict], output_path: Path):
     Header row: Field, file1.cbz, file2.cbz, …
     """
     import csv
-    from comiceditor.comicxml import FIELD_TAGS
+    from bru.comiceditor.comicxml import FIELD_TAGS
 
     filenames = list(all_metadata.keys())
     with open(output_path, "w", newline="", encoding="utf-8") as f:

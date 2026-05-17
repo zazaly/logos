@@ -1,5 +1,5 @@
 @echo off
-REM Quick launcher — run after setup_and_run.bat has been run once.
+REM Quick launcher for integrated Bulk Rename + Metadata editor.
 
 set PYTHON=
 where py >nul 2>&1 && set PYTHON=py
@@ -15,4 +15,4 @@ if "%PYTHON%"=="" (
     exit /b 1
 )
 
-%PYTHON% main.py
+%PYTHON% -m bru
