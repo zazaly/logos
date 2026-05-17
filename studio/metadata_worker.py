@@ -18,7 +18,7 @@ class ExtractionWorker(QThread):
         self.extract_dir = extract_dir
 
     def run(self):
-        from bru.comiceditor.archive import extract_archive
+        from studio.metadata_archive import extract_archive
         success, error = extract_archive(
             self.archive_path, self.extract_dir,
             progress_callback=lambda f: self.progress.emit(f)
@@ -38,7 +38,7 @@ class RepackageWorker(QThread):
         self.tasks = tasks
 
     def run(self):
-        from bru.comiceditor.archive import repackage_archive
+        from studio.metadata_archive import repackage_archive
         for extract_dir, original_path, output_path in self.tasks:
             fname = original_path.name
 

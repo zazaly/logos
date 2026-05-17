@@ -1,5 +1,5 @@
 """
-bru.engine
+studio.engine
 ==========
 Stateless rename engine.
 

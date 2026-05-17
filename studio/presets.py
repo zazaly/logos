@@ -1,5 +1,5 @@
 """
-bru.presets
+studio.presets
 ===========
 Load / save / delete named rename-rule presets as JSON.
 

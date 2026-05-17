@@ -1,7 +1,7 @@
 """
 conftest.py
 ===========
-Shared pytest fixtures for the bru test suite.
+Shared pytest fixtures for the studio test suite.
 
 Fixtures
 --------
@@ -15,8 +15,8 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-from bru.engine  import RenameEngine
-from bru.history import HistoryManager
+from studio.engine  import RenameEngine
+from studio.history import HistoryManager
 
 
 # ── sample directory ──────────────────────────────────────────────────────── #
@@ -72,7 +72,7 @@ def preset_manager(tmp_path: Path):
     A PresetManager that writes to tmp_path instead of the real Qt config dir.
     Uses a thin subclass so no QSettings is needed.
     """
-    from bru.presets import PresetManager
+    from studio.presets import PresetManager
 
     class _IsolatedPM(PresetManager):
         def __init__(self, path: Path):

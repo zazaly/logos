@@ -1,5 +1,5 @@
 """
-bru.metadata
+studio.metadata
 ============
 Extract rename-relevant metadata from files.
 

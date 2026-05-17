@@ -56,7 +56,7 @@ def scan_folder(folder: Path, recursive: bool = False) -> list[Path]:
 
 
 def get_temp_dir(source_folder: Path) -> Path:
-    return source_folder / ".comiceditor_tmp"
+    return source_folder / ".metadata_tmp"
 
 
 def get_extract_dir(source_folder: Path, archive_path: Path) -> Path:

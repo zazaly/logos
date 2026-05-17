@@ -1,5 +1,5 @@
 """
-bru.history
+studio.history
 ===========
 Undo/redo stack for rename batches.
 

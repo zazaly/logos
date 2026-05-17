@@ -1,9 +1,9 @@
 """
-bru.__main__
+studio.__main__
 ============
 Entry-point so the package can be run with:
 
-    python -m bru
+    python -m studio
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
-from bru.theme       import apply_windows_xp_theme
-from bru.main_window import MainWindow
+from studio.theme       import apply_windows_xp_theme
+from studio.main_window import MainWindow
 
 
 def main() -> None:

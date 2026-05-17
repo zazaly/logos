@@ -41,7 +41,7 @@ echo  Setup complete! Launching application...
 echo ============================================
 echo.
 
-!PYTHON! -m bru
+!PYTHON! -m studio
 if errorlevel 1 (
     echo.
     echo Application exited with an error.

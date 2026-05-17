@@ -1,5 +1,5 @@
 """
-bru.widgets
+studio.widgets
 ===========
 Reusable PySide6 widgets used by the main window.
 
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 import re
 
-from bru.theme import COLORS
+from studio.theme import COLORS
 
 # Column indices (shared constant — import from here if needed)
 COL_ORIG   = 0
