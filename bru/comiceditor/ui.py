@@ -411,22 +411,23 @@ class RowActionWidget(QWidget):
     auto_clicked   = Signal(int)
     clear_clicked  = Signal(int)
 
-    def __init__(self, row: int, parent=None):
+    def __init__(self, row: int, icons: dict[str, str] | None = None, icon_font: str = "Noto Color Emoji", parent=None):
         super().__init__(parent)
         self._row = row
+        icon_map = icons or {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
         lay = QHBoxLayout(self)
         lay.setContentsMargins(2, 1, 2, 1)
         lay.setSpacing(2)
 
-        self.btn_u = QPushButton("♻️")
-        self.btn_m = QPushButton("🔍")
-        self.btn_a = QPushButton("🧮")
-        self.btn_c = QPushButton("🧹")
+        self.btn_u = QPushButton(icon_map.get("update", "♻️"))
+        self.btn_m = QPushButton(icon_map.get("mirror", "🔍"))
+        self.btn_a = QPushButton(icon_map.get("auto", "🧮"))
+        self.btn_c = QPushButton(icon_map.get("clear", "🧹"))
 
         for btn in (self.btn_u, self.btn_m, self.btn_a, self.btn_c):
             btn.setObjectName("row_btn")
             btn.setFixedSize(QSize(26, 22))
-            btn.setFont(QFont("Noto Color Emoji", 11))
+            btn.setFont(QFont(icon_font, 11))
 
         self.btn_u.setToolTip("Update — flash to confirm first-column value")
         self.btn_m.setToolTip("Mirror — copy col 1 value to ALL other columns")
@@ -486,6 +487,7 @@ FIRST_FILE_COL = 2
 
 class MetadataTable(QTableWidget):
     log_message = Signal(str, str)   # message, level
+    DEFAULT_ACTION_ICONS = {"update": "♻️", "mirror": "🔍", "auto": "🧮", "clear": "🧹"}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -508,6 +510,8 @@ class MetadataTable(QTableWidget):
         self._section_rows: set[int] = set()
         self._files: list[Path] = []
         self._section_start: dict[str, int] = {}
+        self._action_icons = dict(self.DEFAULT_ACTION_ICONS)
+        self._action_icon_font = "Noto Color Emoji"
 
     # ── Build rows ────────────────────────────────────────────────────────────
 
@@ -559,7 +563,7 @@ class MetadataTable(QTableWidget):
                 litem.setForeground(QBrush(QColor(TEXT_MAIN)))
                 self.setItem(i, LABEL_COL, litem)
 
-                aw = RowActionWidget(i)
+                aw = RowActionWidget(i, icons=self._action_icons, icon_font=self._action_icon_font)
                 aw.update_clicked.connect(self._on_update)
                 aw.mirror_clicked.connect(self._on_mirror)
                 aw.auto_clicked.connect(self._on_auto)
@@ -571,6 +575,22 @@ class MetadataTable(QTableWidget):
         self.setColumnWidth(ACTION_COL, 120)
         self.horizontalHeader().setSectionResizeMode(LABEL_COL,  QHeaderView.Fixed)
         self.horizontalHeader().setSectionResizeMode(ACTION_COL, QHeaderView.Fixed)
+
+    def set_action_icons(self, icons: dict[str, str], icon_font: str = "Noto Color Emoji") -> None:
+        self._action_icons = dict(self.DEFAULT_ACTION_ICONS)
+        self._action_icons.update({k: v for k, v in (icons or {}).items() if v})
+        self._action_icon_font = icon_font or "Noto Color Emoji"
+        for row, tag in enumerate(self._row_map):
+            if tag is None or row in self._section_rows:
+                continue
+            widget = self.cellWidget(row, ACTION_COL)
+            if isinstance(widget, RowActionWidget):
+                widget.btn_u.setText(self._action_icons["update"])
+                widget.btn_m.setText(self._action_icons["mirror"])
+                widget.btn_a.setText(self._action_icons["auto"])
+                widget.btn_c.setText(self._action_icons["clear"])
+                for btn in (widget.btn_u, widget.btn_m, widget.btn_a, widget.btn_c):
+                    btn.setFont(QFont(self._action_icon_font, 11))
 
     # ── Column management ─────────────────────────────────────────────────────
 

@@ -19,6 +19,9 @@ import json
 import os
 import re
 import sys
+import shutil
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +67,7 @@ class MainWindow(QMainWindow):
         self._settings_path = Path(__file__).resolve().parent.parent / "settings.json"
         self._meta_cache: dict[str, dict]   = {}
         self._theme_choices: dict[str, str] = {}
+        self._history_preview_dir = Path(tempfile.mkdtemp(prefix="bru_history_preview_"))
 
         # Debounce: fire preview 150 ms after the last control change
         self._preview_timer = QTimer(singleShot=True, interval=150)
@@ -180,6 +184,17 @@ class MainWindow(QMainWindow):
         self._always_on_top = QCheckBox("Always on top")
         self._always_on_top.toggled.connect(self._on_always_on_top_toggled)
         g.addWidget(self._always_on_top, 2, 0, 1, 2)
+        g.addWidget(QLabel("Metadata icon font"), 3, 0)
+        self._meta_icon_font_edit = QLineEdit("Noto Color Emoji")
+        self._meta_icon_font_edit.editingFinished.connect(self._on_metadata_icons_changed)
+        g.addWidget(self._meta_icon_font_edit, 3, 1)
+        self._meta_icon_edits: dict[str, QLineEdit] = {}
+        for i, (key, label) in enumerate([("update", "Refresh icon"), ("mirror", "Mirror icon"), ("auto", "Auto-math icon"), ("clear", "Clear icon")], start=4):
+            g.addWidget(QLabel(label), i, 0)
+            edit = QLineEdit()
+            edit.editingFinished.connect(self._on_metadata_icons_changed)
+            self._meta_icon_edits[key] = edit
+            g.addWidget(edit, i, 1)
         g.setColumnStretch(1, 1)
         return tab
 
@@ -229,6 +244,11 @@ class MainWindow(QMainWindow):
         reverse = {value: key for key, value in self._theme_choices.items()}
         self._theme_combo.setCurrentText(reverse.get(selected_theme, next(iter(self._theme_choices.keys()), "")))
         self._set_theme(selected_theme)
+        meta_icons = settings.get("metadata_icons", {})
+        self._meta_icon_font_edit.setText(settings.get("metadata_icon_font", "Noto Color Emoji"))
+        for key, edit in self._meta_icon_edits.items():
+            edit.setText(meta_icons.get(key, ""))
+        self._on_metadata_icons_changed()
 
     def _save_settings(self) -> None:
         g = self.geometry()
@@ -236,8 +256,15 @@ class MainWindow(QMainWindow):
                 "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads"),
                 "last_directory": self._current_dir,
                 "always_on_top": self._always_on_top.isChecked(),
+                "metadata_icon_font": self._meta_icon_font_edit.text().strip() or "Noto Color Emoji",
+                "metadata_icons": {k: e.text().strip() for k, e in self._meta_icon_edits.items()},
                 "window": {"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()}}
         self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _on_metadata_icons_changed(self) -> None:
+        icons = {k: e.text().strip() for k, e in self._meta_icon_edits.items()}
+        self._metadata_window.table.set_action_icons(icons, self._meta_icon_font_edit.text().strip())
+        self._save_settings()
 
     def _on_always_on_top_toggled(self, checked: bool) -> None:
         self._apply_always_on_top(checked)
@@ -249,6 +276,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._save_settings()
+        shutil.rmtree(self._history_preview_dir, ignore_errors=True)
         super().closeEvent(event)
 
     # ── Path bar ──────────────────────────────────────────────────────── #
@@ -984,7 +1012,9 @@ class MainWindow(QMainWindow):
                 table.set_error_status(row)
 
         if batch:
-            entry = HistoryEntry(self._current_dir, batch)
+            preview_file = self._history_preview_dir / f"history_preview_{len(self.history.visible_entries())+1}_{time.time_ns()}.png"
+            self._file_table.grab().save(str(preview_file), "PNG")
+            entry = HistoryEntry(self._current_dir, batch, preview_path=str(preview_file))
             self.history.push(entry)
             self._history_panel.refresh(self.history.visible_entries())
             self._btn_undo.setEnabled(True)

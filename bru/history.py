@@ -39,6 +39,7 @@ class HistoryEntry:
     """
     directory: str
     renames:   list[tuple[str, str]]
+    preview_path: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
 
     # ------------------------------------------------------------------ #
@@ -68,7 +69,8 @@ class HistoryEntry:
     def summary_label(self) -> str:
         """Short human-readable string for the history list widget."""
         folder = Path(self.directory).name or self.directory
-        return f"{self.timestamp}  ·  {len(self.renames)} file(s)  ·  …/{folder}"
+        preview = f"  ·  preview: {self.preview_path}" if self.preview_path else ""
+        return f"{self.timestamp}  ·  {len(self.renames)} file(s)  ·  …/{folder}{preview}"
 
 
 class HistoryManager:
