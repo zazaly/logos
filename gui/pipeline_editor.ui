@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PipelineEditorView</class>
+ <widget class="QWidget" name="PipelineEditorView">
+  <layout class="QVBoxLayout" name="pipelineRootLayout">
+   <property name="contentsMargins"><left>8</left><top>8</top><right>8</right><bottom>8</bottom></property>
+   <property name="spacing"><number>6</number></property>
+   <item>
+    <widget class="QGroupBox" name="pipelineEditorGroup">
+     <property name="title"><string>🎛  RULE PIPELINE</string></property>
+     <layout class="QVBoxLayout" name="pipelineGroupLayout">
+      <property name="contentsMargins"><left>8</left><top>18</top><right>8</right><bottom>8</bottom></property>
+      <item>
+       <widget class="QWidget" name="pipelineToolbar">
+        <layout class="QHBoxLayout" name="pipelineToolbarLayout">
+         <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+         <property name="spacing"><number>6</number></property>
+         <item><widget class="QComboBox" name="pipelineCombo"/></item>
+         <item><widget class="QPushButton" name="saveButton"><property name="text"><string>Save As…</string></property></widget></item>
+         <item><widget class="QPushButton" name="deleteButton"><property name="text"><string>Delete</string></property></widget></item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSplitter" name="pipelineSplitter">
+        <property name="orientation"><enum>Qt::Vertical</enum></property>
+        <widget class="QListWidget" name="pipelineStepList">
+         <property name="dragDropMode"><enum>QAbstractItemView::InternalMove</enum></property>
+         <property name="defaultDropAction"><enum>Qt::MoveAction</enum></property>
+         <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
+        </widget>
+        <widget class="QGraphicsView" name="pipelineCanvas">
+         <property name="minimumSize"><size><width>0</width><height>260</height></size></property>
+         <property name="toolTip"><string>Drag rule blocks to rearrange. Drag from an output socket to an input socket to reconnect. Right-click a cable to disconnect.</string></property>
+        </widget>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="pipelineHelpLabel">
+        <property name="text"><string>Simple patch-cable canvas: move blocks freely, connect outputs to inputs, or right-click a cable to disconnect.</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

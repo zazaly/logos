@@ -1,18 +1,18 @@
-"""Qt widgets for named, drag-reorderable rename pipelines."""
+"""Qt Designer backed widgets for editable rename rule pipelines."""
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPen
+from PySide6.QtGui import QBrush, QColor, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QGraphicsDropShadowEffect,
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsPathItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
     QGraphicsView,
-    QGroupBox,
-    QHBoxLayout,
     QInputDialog,
     QListWidget,
     QListWidgetItem,
@@ -29,128 +29,245 @@ from studio.pipeline import (
     default_pipeline_library,
     normalise_pipeline_order,
 )
+from studio.ui_loader import load_ui
+
+
+class PipelineNode(QGraphicsRectItem):
+    """Movable rule block shown on the pipeline canvas."""
+
+    WIDTH = 150.0
+    HEIGHT = 72.0
+
+    def __init__(self, key: str, canvas: PipelineCanvas, pos: QPointF) -> None:
+        step = STEP_BY_KEY[key]
+        super().__init__(QRectF(0, 0, self.WIDTH, self.HEIGHT))
+        self.key = key
+        self.canvas = canvas
+        self.setPos(pos)
+        self.setBrush(QBrush(QColor(32, 36, 48)))
+        self.setPen(QPen(QColor(step.accent), 2))
+        self.setToolTip(step.description)
+        self.setFlags(
+            QGraphicsItem.ItemIsMovable
+            | QGraphicsItem.ItemIsSelectable
+            | QGraphicsItem.ItemSendsGeometryChanges
+        )
+
+        title = QGraphicsSimpleTextItem(step.title, self)
+        title.setBrush(QBrush(QColor("#f5f7ff")))
+        title.setPos(14, 12)
+        desc = QGraphicsSimpleTextItem(step.description[:28] + ("…" if len(step.description) > 28 else ""), self)
+        desc.setBrush(QBrush(QColor("#a8b3cf")))
+        desc.setPos(14, 40)
+
+        self.input_socket = QGraphicsEllipseItem(QRectF(-5, self.HEIGHT / 2 - 5, 10, 10), self)
+        self.output_socket = QGraphicsEllipseItem(
+            QRectF(self.WIDTH - 5, self.HEIGHT / 2 - 5, 10, 10), self
+        )
+        for socket in (self.input_socket, self.output_socket):
+            socket.setBrush(QBrush(QColor(step.accent)))
+            socket.setPen(QPen(QColor("#111827"), 1))
+
+    def input_pos(self) -> QPointF:
+        return self.mapToScene(0, self.HEIGHT / 2)
+
+    def output_pos(self) -> QPointF:
+        return self.mapToScene(self.WIDTH, self.HEIGHT / 2)
+
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            self.canvas.refresh_cables()
+        return super().itemChange(change, value)
+
+
+class CableItem(QGraphicsPathItem):
+    """Right-click removable patch cable between two pipeline nodes."""
+
+    def __init__(self, canvas: PipelineCanvas, src: str, dst: str) -> None:
+        super().__init__()
+        self.canvas = canvas
+        self.src = src
+        self.dst = dst
+        self.setPen(QPen(QColor("#82aaff"), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        self.setZValue(-10)
+        self.setToolTip("Right-click to disconnect")
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.canvas.disconnect(self.src, self.dst)
+        event.accept()
 
 
 class PipelineCanvas(QGraphicsView):
-    """Small patch-cable-style graph preview for a pipeline order."""
+    """Simple VSTHost-style patch canvas for a linear rename pipeline."""
+
+    order_changed = Signal(list)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
-        self.setMinimumHeight(220)
-        self.setRenderHints(self.renderHints())
+        self.setMinimumHeight(260)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setObjectName("pipelineCanvas")
+        self._nodes: dict[str, PipelineNode] = {}
+        self._edges: list[tuple[str, str]] = []
+        self._cables: list[CableItem] = []
+        self._drag_source: str | None = None
+        self._rubber_cable: QGraphicsPathItem | None = None
 
     def set_order(self, order: list[str]) -> None:
+        order = normalise_pipeline_order(order)
         self._scene.clear()
-        x = 12.0
-        y = 42.0
-        width = 138.0
-        height = 68.0
-        gap = 64.0
-        sockets: list[tuple[QPointF, QPointF]] = []
+        self._nodes.clear()
+        self._edges.clear()
+        self._cables.clear()
+        x = 24.0
+        for key in order:
+            node = PipelineNode(key, self, QPointF(x, 64.0))
+            self._nodes[key] = node
+            self._scene.addItem(node)
+            x += PipelineNode.WIDTH + 70.0
+        self._edges = list(zip(order, order[1:], strict=False))
+        self.refresh_cables()
 
-        for index, key in enumerate(normalise_pipeline_order(order)):
-            step = STEP_BY_KEY[key]
-            rect = QGraphicsRectItem(QRectF(x, y, width, height))
-            rect.setBrush(QBrush(QColor(32, 36, 48)))
-            rect.setPen(QPen(QColor(step.accent), 2))
-            rect.setToolTip(step.description)
-            shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(16)
-            shadow.setOffset(0, 4)
-            rect.setGraphicsEffect(shadow)
-            self._scene.addItem(rect)
+    def current_order(self) -> list[str]:
+        """Return the connected chain, appending disconnected blocks left-to-right."""
+        keys = list(self._nodes)
+        outgoing = {src: dst for src, dst in self._edges}
+        incoming = {dst for _, dst in self._edges}
+        starts = [key for key in keys if key not in incoming]
+        starts.sort(key=lambda key: self._nodes[key].pos().x())
 
-            title = QGraphicsSimpleTextItem(f"{index + 1}. {step.title}")
-            title.setBrush(QBrush(QColor("#f5f7ff")))
-            title.setPos(x + 12, y + 12)
-            self._scene.addItem(title)
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for start in starts:
+            key: str | None = start
+            while key and key not in seen:
+                ordered.append(key)
+                seen.add(key)
+                key = outgoing.get(key)
+        leftovers = [key for key in keys if key not in seen]
+        leftovers.sort(key=lambda key: self._nodes[key].pos().x())
+        ordered.extend(leftovers)
+        return normalise_pipeline_order(ordered)
 
-            desc = QGraphicsSimpleTextItem(step.description[:25] + ("…" if len(step.description) > 25 else ""))
-            desc.setBrush(QBrush(QColor("#a8b3cf")))
-            desc.setPos(x + 12, y + 38)
-            self._scene.addItem(desc)
+    def disconnect(self, src: str, dst: str) -> None:
+        self._edges = [(a, b) for a, b in self._edges if not (a == src and b == dst)]
+        self.refresh_cables()
+        self.order_changed.emit(self.current_order())
 
-            inlet = QPointF(x, y + height / 2)
-            outlet = QPointF(x + width, y + height / 2)
-            sockets.append((inlet, outlet))
-            for point in (inlet, outlet):
-                socket = QGraphicsRectItem(QRectF(point.x() - 4, point.y() - 4, 8, 8))
-                socket.setBrush(QBrush(QColor(step.accent)))
-                socket.setPen(QPen(QColor("#111827"), 1))
-                self._scene.addItem(socket)
-
-            x += width + gap
-
-        for left, right in zip(sockets, sockets[1:], strict=False):
-            start = left[1]
-            end = right[0]
-            path = self._scene.addPath(
-                self._cable_path(start, end),
-                QPen(QColor("#82aaff"), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin),
+    def refresh_cables(self) -> None:
+        for cable in self._cables:
+            self._scene.removeItem(cable)
+        self._cables.clear()
+        for src, dst in self._edges:
+            if src not in self._nodes or dst not in self._nodes:
+                continue
+            cable = CableItem(self, src, dst)
+            cable.setPath(self._cable_path(self._nodes[src].output_pos(), self._nodes[dst].input_pos()))
+            self._scene.addItem(cable)
+            self._cables.append(cable)
+        if self._rubber_cable is not None and self._drag_source in self._nodes:
+            self._rubber_cable.setPath(
+                self._cable_path(self._nodes[self._drag_source].output_pos(), self.mapToScene(self.mapFromGlobal(self.cursor().pos())))
             )
-            path.setZValue(-1)
-
-        self._scene.setSceneRect(self._scene.itemsBoundingRect().adjusted(-16, -24, 24, 32))
+        self._scene.setSceneRect(self._scene.itemsBoundingRect().adjusted(-32, -48, 48, 64))
 
     @staticmethod
-    def _cable_path(start: QPointF, end: QPointF):
-        from PySide6.QtGui import QPainterPath
-
+    def _cable_path(start: QPointF, end: QPointF) -> QPainterPath:
         path = QPainterPath(start)
-        dx = max(40.0, (end.x() - start.x()) / 2)
-        path.cubicTo(start.x() + dx, start.y() - 42, end.x() - dx, end.y() + 42, end.x(), end.y())
+        dx = max(40.0, abs(end.x() - start.x()) / 2)
+        path.cubicTo(start.x() + dx, start.y(), end.x() - dx, end.y(), end.x(), end.y())
         return path
 
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        key = self._socket_hit(event.position().toPoint(), output=True)
+        if key:
+            self._drag_source = key
+            self._rubber_cable = QGraphicsPathItem()
+            self._rubber_cable.setPen(QPen(QColor("#c3e88d"), 2, Qt.DashLine))
+            self._rubber_cable.setZValue(-5)
+            self._scene.addItem(self._rubber_cable)
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
-class PipelineEditor(QGroupBox):
-    """Named reusable pipeline editor with drag/drop ordering."""
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self._drag_source and self._rubber_cable:
+            start = self._nodes[self._drag_source].output_pos()
+            self._rubber_cable.setPath(self._cable_path(start, self.mapToScene(event.position().toPoint())))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self._drag_source:
+            dst = self._socket_hit(event.position().toPoint(), output=False)
+            src = self._drag_source
+            if self._rubber_cable:
+                self._scene.removeItem(self._rubber_cable)
+            self._drag_source = None
+            self._rubber_cable = None
+            if dst and dst != src:
+                # Keep the graph simple: one output and one input connection per block.
+                self._edges = [(a, b) for a, b in self._edges if a != src and b != dst]
+                self._edges.append((src, dst))
+                self.refresh_cables()
+                self.order_changed.emit(self.current_order())
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _socket_hit(self, point, *, output: bool) -> str | None:
+        scene_point = self.mapToScene(point)
+        for key, node in self._nodes.items():
+            center = node.output_pos() if output else node.input_pos()
+            if (center - scene_point).manhattanLength() <= 14:
+                return key
+        return None
+
+
+class PipelineEditor(QWidget):
+    """Named reusable pipeline editor loaded from ``gui/pipeline_editor.ui``."""
 
     order_changed = Signal(list)
     library_changed = Signal(dict, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("🎛  RULE PIPELINE", parent)
+        super().__init__(parent)
         self.setObjectName("pipelineEditor")
         self._library = default_pipeline_library()
         self._active_name = DEFAULT_PIPELINE_NAME
+        self._updating = False
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(8, 18, 8, 8)
-        root.setSpacing(6)
+        self._ui = load_ui("pipeline_editor.ui", self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._ui)
 
-        top = QHBoxLayout()
-        self.pipeline_combo = QComboBox()
-        self.pipeline_combo.setObjectName("pipelineCombo")
+        self.pipeline_combo = self._ui.findChild(QComboBox, "pipelineCombo")
+        self.save_button = self._ui.findChild(QPushButton, "saveButton")
+        self.delete_button = self._ui.findChild(QPushButton, "deleteButton")
+        self.step_list = self._ui.findChild(QListWidget, "pipelineStepList")
+        placeholder = self._ui.findChild(QGraphicsView, "pipelineCanvas")
+        self.canvas = PipelineCanvas()
+        splitter = placeholder.parentWidget()
+        if not isinstance(splitter, QSplitter):
+            raise RuntimeError("pipelineCanvas must live directly inside the pipeline splitter")
+        idx = splitter.indexOf(placeholder)
+        placeholder.setParent(None)
+        splitter.insertWidget(idx, self.canvas)
+        placeholder.deleteLater()
+
         self.pipeline_combo.currentTextChanged.connect(self._select_pipeline)
-        top.addWidget(self.pipeline_combo, stretch=1)
-
-        self.save_button = QPushButton("Save As…")
         self.save_button.clicked.connect(self._save_as)
-        top.addWidget(self.save_button)
-        self.delete_button = QPushButton("Delete")
         self.delete_button.clicked.connect(self._delete_current)
-        top.addWidget(self.delete_button)
-        root.addLayout(top)
-
-        split = QSplitter(Qt.Vertical)
-        self.step_list = QListWidget()
-        self.step_list.setObjectName("pipelineStepList")
         self.step_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.step_list.setDefaultDropAction(Qt.MoveAction)
         self.step_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.step_list.model().rowsMoved.connect(self._emit_order_changed)
-        split.addWidget(self.step_list)
-
-        self.canvas = PipelineCanvas()
-        split.addWidget(self.canvas)
-        split.setSizes([260, 240])
-        root.addWidget(split)
-
+        self.canvas.order_changed.connect(self._canvas_order_changed)
         self.set_library(self._library, self._active_name)
 
     def set_library(self, library: dict[str, list[str]] | None, active_name: str | None) -> None:
@@ -162,71 +279,84 @@ class PipelineEditor(QGroupBox):
         self._library = merged
         self._active_name = active_name if active_name in merged else DEFAULT_PIPELINE_NAME
         self._refresh_combo()
-        self._load_order(self._library[self._active_name])
-
-    def current_order(self) -> list[str]:
-        return [self.step_list.item(row).data(Qt.UserRole) for row in range(self.step_list.count())]
+        self._load_active()
 
     def pipeline_library(self) -> dict[str, list[str]]:
         self._library[self._active_name] = self.current_order()
-        return {name: normalise_pipeline_order(order) for name, order in self._library.items()}
+        return {name: list(order) for name, order in self._library.items()}
 
     def active_pipeline_name(self) -> str:
         return self._active_name
 
+    def current_order(self) -> list[str]:
+        return normalise_pipeline_order([self.step_list.item(i).data(Qt.UserRole) for i in range(self.step_list.count())])
+
     def _refresh_combo(self) -> None:
         self.pipeline_combo.blockSignals(True)
         self.pipeline_combo.clear()
-        self.pipeline_combo.addItems(sorted(self._library))
+        self.pipeline_combo.addItems(sorted(self._library.keys()))
         self.pipeline_combo.setCurrentText(self._active_name)
         self.pipeline_combo.blockSignals(False)
-        self.delete_button.setEnabled(self._active_name != DEFAULT_PIPELINE_NAME)
 
-    def _load_order(self, order: list[str]) -> None:
-        self.step_list.blockSignals(True)
+    def _load_active(self) -> None:
+        order = normalise_pipeline_order(self._library.get(self._active_name, []))
+        self._set_order_widgets(order)
+
+    def _set_order_widgets(self, order: list[str]) -> None:
+        self._updating = True
         self.step_list.clear()
-        for key in normalise_pipeline_order(order):
+        for key in order:
             step = STEP_BY_KEY[key]
-            item = QListWidgetItem(f"{step.title}  —  {step.description}")
+            item = QListWidgetItem(step.title)
             item.setData(Qt.UserRole, key)
-            item.setToolTip("Drag to rewire this rule group in the deterministic pipeline.")
+            item.setToolTip(step.description)
             self.step_list.addItem(item)
-        self.step_list.blockSignals(False)
-        self.canvas.set_order(self.current_order())
-        self.order_changed.emit(self.current_order())
+        self.canvas.set_order(order)
+        self._updating = False
 
     def _select_pipeline(self, name: str) -> None:
-        if not name or name not in self._library:
+        if not name or name == self._active_name:
             return
         self._library[self._active_name] = self.current_order()
         self._active_name = name
-        self.delete_button.setEnabled(name != DEFAULT_PIPELINE_NAME)
-        self._load_order(self._library[name])
+        self._load_active()
+        self.order_changed.emit(self.current_order())
         self.library_changed.emit(self.pipeline_library(), self._active_name)
 
     def _emit_order_changed(self, *_args) -> None:
-        self._library[self._active_name] = self.current_order()
-        self.canvas.set_order(self.current_order())
-        self.order_changed.emit(self.current_order())
+        if self._updating:
+            return
+        order = self.current_order()
+        self._library[self._active_name] = order
+        self.canvas.set_order(order)
+        self.order_changed.emit(order)
+        self.library_changed.emit(self.pipeline_library(), self._active_name)
+
+    def _canvas_order_changed(self, order: list[str]) -> None:
+        if self._updating:
+            return
+        self._library[self._active_name] = order
+        self._set_order_widgets(order)
+        self.order_changed.emit(order)
         self.library_changed.emit(self.pipeline_library(), self._active_name)
 
     def _save_as(self) -> None:
         name, ok = QInputDialog.getText(self, "Save Pipeline", "Pipeline name:", text=self._active_name)
-        clean_name = name.strip()
-        if not ok or not clean_name:
+        name = name.strip()
+        if not ok or not name:
             return
-        self._library[clean_name] = self.current_order()
-        self._active_name = clean_name
+        self._library[name] = self.current_order()
+        self._active_name = name
         self._refresh_combo()
         self.library_changed.emit(self.pipeline_library(), self._active_name)
 
     def _delete_current(self) -> None:
         if self._active_name == DEFAULT_PIPELINE_NAME:
+            QMessageBox.information(self, "Pipeline", "The factory pipeline cannot be deleted.")
             return
-        if QMessageBox.question(self, "Delete Pipeline", f"Delete pipeline '{self._active_name}'?") != QMessageBox.Yes:
-            return
-        self._library.pop(self._active_name, None)
+        del self._library[self._active_name]
         self._active_name = DEFAULT_PIPELINE_NAME
         self._refresh_combo()
-        self._load_order(self._library[self._active_name])
+        self._load_active()
         self.library_changed.emit(self.pipeline_library(), self._active_name)
+        self.order_changed.emit(self.current_order())

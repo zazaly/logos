@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindowView</class>
+ <widget class="QWidget" name="MainWindowView">
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="contentsMargins"><left>8</left><top>4</top><right>8</right><bottom>6</bottom></property>
+   <property name="spacing"><number>5</number></property>
+   <item>
+    <widget class="QTabWidget" name="tabs">
+     <property name="currentIndex"><number>0</number></property>
+     <widget class="QWidget" name="renameTab">
+      <attribute name="title"><string>Rename</string></attribute>
+      <layout class="QVBoxLayout" name="renameLayout">
+       <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+       <property name="spacing"><number>5</number></property>
+       <item>
+        <widget class="QWidget" name="pathBar">
+         <layout class="QHBoxLayout" name="pathLayout">
+          <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+          <property name="spacing"><number>6</number></property>
+          <item><widget class="QLabel" name="pathIconLabel"><property name="text"><string>📂</string></property></widget></item>
+          <item><widget class="QLineEdit" name="pathEdit"><property name="placeholderText"><string>Directory path…</string></property></widget></item>
+          <item><widget class="QPushButton" name="pathGoButton"><property name="text"><string>Go</string></property><property name="maximumSize"><size><width>54</width><height>16777215</height></size></property></widget></item>
+          <item><widget class="QPushButton" name="pathUpButton"><property name="text"><string>↑ Up</string></property><property name="maximumSize"><size><width>70</width><height>16777215</height></size></property></widget></item>
+          <item><widget class="QPushButton" name="pathBrowseButton"><property name="text"><string>Browse…</string></property><property name="maximumSize"><size><width>100</width><height>16777215</height></size></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSplitter" name="renameSplitter">
+         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+         <widget class="QScrollArea" name="controlsScroll">
+          <property name="widgetResizable"><bool>true</bool></property>
+         </widget>
+         <widget class="QWidget" name="tablePane">
+          <layout class="QVBoxLayout" name="tableLayout">
+           <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+           <property name="spacing"><number>4</number></property>
+           <item>
+            <widget class="QWidget" name="fileToolbar">
+             <layout class="QHBoxLayout" name="fileToolbarLayout">
+              <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+              <property name="spacing"><number>4</number></property>
+              <item><widget class="QLabel" name="filesLabel"><property name="text"><string>Files</string></property></widget></item>
+              <item><spacer name="fileToolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+              <item><widget class="QLabel" name="countLabel"><property name="text"><string/></property></widget></item>
+             </layout>
+            </widget>
+           </item>
+           <item><widget class="QWidget" name="fileTableHost" native="true"/></item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QWidget" name="actionBar">
+         <layout class="QHBoxLayout" name="actionLayout">
+          <property name="contentsMargins"><left>4</left><top>2</top><right>4</right><bottom>2</bottom></property>
+          <property name="spacing"><number>8</number></property>
+          <item><widget class="QLabel" name="infoLabel"><property name="text"><string/></property></widget></item>
+          <item><widget class="QCheckBox" name="autoDedupCheck"><property name="text"><string>Auto-dedup conflicts</string></property><property name="checked"><bool>true</bool></property><property name="toolTip"><string>If destination exists, append _(2), _(3)… automatically</string></property></widget></item>
+          <item><widget class="QPushButton" name="undoBtn"><property name="text"><string>⎌  Undo</string></property><property name="enabled"><bool>false</bool></property></widget></item>
+          <item><widget class="QPushButton" name="renameBtn"><property name="text"><string>✦  Rename</string></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pipelineTab">
+      <attribute name="title"><string>Rule Pipeline</string></attribute>
+      <layout class="QVBoxLayout" name="pipelineTabLayout">
+       <property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property>
+       <item><widget class="QWidget" name="pipelineHost" native="true"/></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="metadataTab"><attribute name="title"><string>Metadata</string></attribute><layout class="QVBoxLayout" name="metadataLayout"><property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property><item><widget class="QWidget" name="metadataHost" native="true"/></item></layout></widget>
+     <widget class="QWidget" name="historyTab"><attribute name="title"><string>History</string></attribute><layout class="QVBoxLayout" name="historyLayout"><property name="contentsMargins"><left>0</left><top>0</top><right>0</right><bottom>0</bottom></property><item><widget class="QSplitter" name="historySplitter"><property name="orientation"><enum>Qt::Vertical</enum></property><widget class="QWidget" name="historyPanelHost" native="true"/><widget class="QTextEdit" name="historyConsole"><property name="readOnly"><bool>true</bool></property><property name="minimumSize"><size><width>0</width><height>120</height></size></property></widget></widget></item></layout></widget>
+     <widget class="QWidget" name="settingsTab">
+      <attribute name="title"><string>Settings</string></attribute>
+      <layout class="QGridLayout" name="settingsLayout">
+       <item row="0" column="0"><widget class="QLabel" name="themeLabel"><property name="text"><string>Theme</string></property></widget></item>
+       <item row="0" column="1"><widget class="QComboBox" name="themeCombo"/></item>
+       <item row="1" column="0"><widget class="QLabel" name="defaultPathLabel"><property name="text"><string>Default Path</string></property></widget></item>
+       <item row="1" column="1"><widget class="QLineEdit" name="settingsPathEdit"/></item>
+       <item row="2" column="0" colspan="2"><widget class="QCheckBox" name="alwaysOnTopCheck"><property name="text"><string>Always on top</string></property></widget></item>
+       <item row="3" column="0"><widget class="QLabel" name="metaIconFontLabel"><property name="text"><string>Metadata icon font</string></property></widget></item>
+       <item row="3" column="1"><widget class="QLineEdit" name="metaIconFontEdit"><property name="text"><string>Noto Color Emoji</string></property></widget></item>
+       <item row="4" column="0"><widget class="QLabel" name="metaUpdateIconLabel"><property name="text"><string>Refresh icon</string></property></widget></item>
+       <item row="4" column="1"><widget class="QLineEdit" name="metaUpdateIconEdit"/></item>
+       <item row="5" column="0"><widget class="QLabel" name="metaMirrorIconLabel"><property name="text"><string>Mirror icon</string></property></widget></item>
+       <item row="5" column="1"><widget class="QLineEdit" name="metaMirrorIconEdit"/></item>
+       <item row="6" column="0"><widget class="QLabel" name="metaAutoIconLabel"><property name="text"><string>Auto-math icon</string></property></widget></item>
+       <item row="6" column="1"><widget class="QLineEdit" name="metaAutoIconEdit"/></item>
+       <item row="7" column="0"><widget class="QLabel" name="metaClearIconLabel"><property name="text"><string>Clear icon</string></property></widget></item>
+       <item row="7" column="1"><widget class="QLineEdit" name="metaClearIconEdit"/></item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
