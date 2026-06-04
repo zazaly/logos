@@ -18,39 +18,45 @@ import fnmatch
 import json
 import os
 import re
-import sys
 import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import (
-    Qt, QTimer,
-)
-from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QCheckBox, QComboBox,
-    QDialog, QDoubleSpinBox, QFileDialog, QGridLayout,
-    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTabWidget, QTextEdit,
-    QVBoxLayout, QWidget,
-)
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDoubleSpinBox,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QStatusBar,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from studio.engine   import RenameEngine
-from studio.history  import HistoryEntry, HistoryManager
+from studio.engine import RenameEngine
+from studio.history import HistoryEntry, HistoryManager
 from studio.metadata import MetadataExtractor
-from studio.presets  import PresetManager
-from studio.pipeline_ui import PipelineEditor
-from studio.theme    import (
-    COLORS, THEMES_DIR, apply_theme, load_cosmic_ron_palette,
-)
-from studio.widgets  import (
-    COL_NEW, COL_ORIG, COL_STATUS,
-    FileTable, HistoryPanel, PresetDialog, RegExLineEdit, SectionLabel,
-)
 from studio.metadata_ui import MainWindow as MetadataEditorMainWindow
+from studio.pipeline_ui import PipelineEditor
+from studio.presets import PresetManager
+from studio.theme import COLORS, THEMES_DIR, apply_theme, load_cosmic_ron_palette
+from studio.ui_loader import load_ui
+from studio.widgets import FileTable, HistoryPanel, PresetDialog
 
 
 class MainWindow(QMainWindow):
@@ -104,18 +110,95 @@ class MainWindow(QMainWindow):
     # ══════════════════════════════════════════════════════════════════ #
 
     def _build_ui(self) -> None:
-        c = COLORS
-        root_w = QWidget(); self.setCentralWidget(root_w)
-        root = QVBoxLayout(root_w)
-        root.setContentsMargins(8, 4, 8, 6)
-        root.setSpacing(5)
+        """Load the main window from Qt Designer files and wire runtime widgets."""
+        self._ui = load_ui("main_window.ui", self)
+        self.setCentralWidget(self._ui)
 
-        self._tabs = QTabWidget()
-        self._tabs.addTab(self._build_rename_tab(), "Rename")
-        self._tabs.addTab(self._build_metadata_tab(), "Metadata")
-        self._tabs.addTab(self._build_history_tab(), "History")
-        self._tabs.addTab(self._build_settings_tab(), "Settings")
-        root.addWidget(self._tabs, stretch=1)
+        def child(cls, name: str):
+            widget = self._ui.findChild(cls, name)
+            if widget is None:
+                raise RuntimeError(f"Missing widget '{name}' in gui/main_window.ui")
+            return widget
+
+        self._tabs = child(QTabWidget, "tabs")
+
+        # Rename tab: designer-owned shell plus custom runtime widgets.
+        self._path_edit = child(QLineEdit, "pathEdit")
+        self._path_edit.returnPressed.connect(self._navigate_path_bar)
+        child(QPushButton, "pathGoButton").clicked.connect(self._navigate_path_bar)
+        child(QPushButton, "pathUpButton").clicked.connect(self._go_up)
+        child(QPushButton, "pathBrowseButton").clicked.connect(self._browse_folder)
+
+        self._count_label = child(QLabel, "countLabel")
+        self._count_label.setStyleSheet(f"color:{COLORS['MUT']};font-size:11px;")
+        self._info_label = child(QLabel, "infoLabel")
+        self._info_label.setStyleSheet(f"color:{COLORS['MUT']};font-size:11px;")
+        self._chk_auto_dedup = child(QCheckBox, "autoDedupCheck")
+        self._btn_undo = child(QPushButton, "undoBtn")
+        self._btn_undo.clicked.connect(self._do_undo)
+        self._btn_rename = child(QPushButton, "renameBtn")
+        self._btn_rename.clicked.connect(self._do_rename)
+
+        controls_scroll = child(QScrollArea, "controlsScroll")
+        self._controls_widget = load_ui("rename_controls.ui", controls_scroll)
+        controls_scroll.setWidget(self._controls_widget)
+        self._bind_rename_controls()
+
+        file_host = child(QWidget, "fileTableHost")
+        file_layout = QVBoxLayout(file_host)
+        file_layout.setContentsMargins(0, 0, 0, 0)
+        self._file_table = FileTable()
+        self._file_table.rows_reordered.connect(self._schedule_preview)
+        self._file_table.selection_toggled.connect(self._schedule_preview)
+        file_layout.addWidget(self._file_table)
+
+        # Rule Pipeline tab.
+        pipeline_host = child(QWidget, "pipelineHost")
+        pipeline_layout = QVBoxLayout(pipeline_host)
+        pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        self._pipeline_panel = PipelineEditor()
+        self._pipeline_panel.order_changed.connect(self._schedule_preview)
+        self._pipeline_panel.library_changed.connect(self._on_pipeline_library_changed)
+        pipeline_layout.addWidget(self._pipeline_panel)
+
+        # Metadata tab.
+        metadata_host = child(QWidget, "metadataHost")
+        metadata_layout = QVBoxLayout(metadata_host)
+        metadata_layout.setContentsMargins(0, 0, 0, 0)
+        self._metadata_window = MetadataEditorMainWindow(show_console=False)
+        self._metadata_window.setWindowFlags(Qt.Widget)
+        self._metadata_window.setParent(metadata_host)
+        self._metadata_window.log_emitted.connect(self._append_console)
+        metadata_layout.addWidget(self._metadata_window)
+
+        # History tab.
+        history_host = child(QWidget, "historyPanelHost")
+        history_layout = QVBoxLayout(history_host)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+        self._history_panel = HistoryPanel()
+        self._history_panel.undo_requested.connect(self._do_undo)
+        history_layout.addWidget(self._history_panel)
+        self._history_console = child(QTextEdit, "historyConsole")
+
+        # Settings tab.
+        self._theme_combo = child(QComboBox, "themeCombo")
+        self._refresh_theme_choices()
+        self._theme_combo.addItems(list(self._theme_choices.keys()))
+        self._theme_combo.currentTextChanged.connect(self._on_theme_combo_changed)
+        self._settings_path_edit = child(QLineEdit, "settingsPathEdit")
+        self._settings_path_edit.editingFinished.connect(self._save_settings)
+        self._always_on_top = child(QCheckBox, "alwaysOnTopCheck")
+        self._always_on_top.toggled.connect(self._on_always_on_top_toggled)
+        self._meta_icon_font_edit = child(QLineEdit, "metaIconFontEdit")
+        self._meta_icon_font_edit.editingFinished.connect(self._on_metadata_icons_changed)
+        self._meta_icon_edits = {
+            "update": child(QLineEdit, "metaUpdateIconEdit"),
+            "mirror": child(QLineEdit, "metaMirrorIconEdit"),
+            "auto": child(QLineEdit, "metaAutoIconEdit"),
+            "clear": child(QLineEdit, "metaClearIconEdit"),
+        }
+        for edit in self._meta_icon_edits.values():
+            edit.editingFinished.connect(self._on_metadata_icons_changed)
 
         self._status = QStatusBar()
         self._progress = QProgressBar()
@@ -125,79 +208,102 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self._status)
         self._status.showMessage("Ready — select a folder to begin.")
 
-    def _build_rename_tab(self) -> QWidget:
-        tab = QWidget()
-        v = QVBoxLayout(tab)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(5)
-        v.addWidget(self._build_path_bar())
+    def _bind_rename_controls(self) -> None:
+        """Bind widgets from gui/rename_controls.ui to the attribute names used by the engine."""
+        def control(cls, name: str):
+            widget = self._controls_widget.findChild(cls, name)
+            if widget is None:
+                raise RuntimeError(f"Missing widget '{name}' in gui/rename_controls.ui")
+            setattr(self, name, widget)
+            return widget
 
-        hsplit = QSplitter(Qt.Horizontal)
-        hsplit.setHandleWidth(5)
-        hsplit.addWidget(self._build_controls_pane())
-        hsplit.addWidget(self._build_table_pane())
-        hsplit.setSizes([500, 1400])
-        v.addWidget(hsplit, stretch=1)
-        v.addWidget(self._build_action_bar())
-        return tab
+        line_edits = [
+            "rx_match", "rx_replace", "name_fixed", "repl_find", "repl_with",
+            "case_except", "add_prefix", "add_insert", "add_suffix", "date_sep",
+            "num_sep", "mcp_sep", "ext_fixed", "flt_mask",
+        ]
+        spin_boxes = [
+            "rm_first", "rm_last", "rm_from", "rm_to", "add_pos", "num_start",
+            "num_incr", "num_pad", "num_break", "mcp_from", "mcp_length", "mcp_to",
+            "flt_name_min", "flt_name_max",
+        ]
+        combos = [
+            "name_mode", "case_mode", "date_mode", "date_type", "date_fmt",
+            "num_mode", "num_base", "mcp_mode", "ext_mode",
+        ]
+        checks = [
+            "rx_inc_ext", "rx_simple", "rx_v2", "repl_match_case", "repl_first",
+            "rm_digits", "rm_symbols", "rm_high", "rm_ds", "rm_accents",
+            "rm_lead_dots", "rm_brackets", "rm_trim", "add_word_space",
+            "flt_folders", "flt_files", "flt_hidden", "flt_subfolders",
+        ]
+        for name in line_edits:
+            control(QLineEdit, name)
+        for name in spin_boxes:
+            control(QSpinBox, name)
+        for name in combos:
+            control(QComboBox, name)
+        for name in checks:
+            control(QCheckBox, name)
 
-    def _build_metadata_tab(self) -> QWidget:
-        tab = QWidget()
-        v = QVBoxLayout(tab)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(0)
+        combo_items = {
+            "name_mode": ["Keep", "Remove", "Fixed", "Reverse"],
+            "case_mode": ["Same", "Lower", "Upper", "Title", "Sentence"],
+            "date_mode": ["None", "Prefix", "Suffix"],
+            "date_type": ["Creation (Current)", "Modified", "Accessed"],
+            "date_fmt": ["YMD", "DMY", "MDY", "ISO", "YMDHM", "HUMAN"],
+            "num_mode": ["None", "Prefix", "Suffix", "Both"],
+            "num_base": ["Decimal", "Alpha", "Roman"],
+            "mcp_mode": ["None", "Move", "Copy"],
+            "ext_mode": ["Same", "Lower", "Upper", "Fixed", "Remove"],
+        }
+        for name, items in combo_items.items():
+            combo = getattr(self, name)
+            combo.clear()
+            combo.addItems(items)
 
-        self._metadata_window = MetadataEditorMainWindow(show_console=False)
-        self._metadata_window.setWindowFlags(Qt.Widget)
-        self._metadata_window.setParent(tab)
-        self._metadata_window.log_emitted.connect(self._append_console)
-        v.addWidget(self._metadata_window)
-        return tab
+        self._rx_err = self._controls_widget.findChild(QLabel, "rxErrLabel")
+        if self._rx_err is not None:
+            self._rx_err.setStyleSheet(f"color:{COLORS['ERR']};font-size:10px;")
+            self._rx_err.setVisible(False)
+            self.rx_match.textChanged.connect(self._validate_regex_control)
 
-    def _build_history_tab(self) -> QWidget:
-        tab = QWidget()
-        v = QVBoxLayout(tab); v.setContentsMargins(0, 0, 0, 0)
-        self._history_panel = HistoryPanel()
-        self._history_panel.undo_requested.connect(self._do_undo)
-        split = QSplitter(Qt.Vertical)
-        split.addWidget(self._history_panel)
-        self._history_console = QTextEdit()
-        self._history_console.setReadOnly(True)
-        self._history_console.setMinimumHeight(120)
-        split.addWidget(self._history_console)
-        split.setSizes([500, 220])
-        v.addWidget(split)
-        return tab
+        preview_widgets = [
+            self.rx_match, self.rx_replace, self.rx_inc_ext, self.rx_simple, self.rx_v2,
+            self.name_mode, self.name_fixed, self.repl_find, self.repl_with,
+            self.repl_match_case, self.repl_first, self.case_mode, self.case_except,
+            self.rm_first, self.rm_last, self.rm_from, self.rm_to, self.rm_digits,
+            self.rm_symbols, self.rm_high, self.rm_ds, self.rm_accents,
+            self.rm_lead_dots, self.rm_brackets, self.rm_trim, self.add_prefix,
+            self.add_insert, self.add_pos, self.add_suffix, self.add_word_space,
+            self.date_mode, self.date_type, self.date_fmt, self.date_sep,
+            self.num_mode, self.num_start, self.num_incr, self.num_pad, self.num_sep,
+            self.num_break, self.num_base, self.mcp_mode, self.mcp_from,
+            self.mcp_length, self.mcp_to, self.mcp_sep, self.ext_mode, self.ext_fixed,
+        ]
+        for widget in preview_widgets:
+            self._wire(widget)
+        for widget in (
+            self.flt_mask, self.flt_folders, self.flt_files, self.flt_hidden,
+            self.flt_subfolders, self.flt_name_min, self.flt_name_max,
+        ):
+            self._wire_to(widget, self._on_filter_changed)
 
-    def _build_settings_tab(self) -> QWidget:
-        tab = QWidget()
-        g = QGridLayout(tab)
-        g.addWidget(QLabel("Theme"), 0, 0)
-        self._theme_combo = QComboBox()
-        self._refresh_theme_choices()
-        self._theme_combo.addItems(list(self._theme_choices.keys()))
-        self._theme_combo.currentTextChanged.connect(self._on_theme_combo_changed)
-        g.addWidget(self._theme_combo, 0, 1)
-        g.addWidget(QLabel("Default Path"), 1, 0)
-        self._settings_path_edit = QLineEdit()
-        self._settings_path_edit.editingFinished.connect(self._save_settings)
-        g.addWidget(self._settings_path_edit, 1, 1)
-        self._always_on_top = QCheckBox("Always on top")
-        self._always_on_top.toggled.connect(self._on_always_on_top_toggled)
-        g.addWidget(self._always_on_top, 2, 0, 1, 2)
-        g.addWidget(QLabel("Metadata icon font"), 3, 0)
-        self._meta_icon_font_edit = QLineEdit("Noto Color Emoji")
-        self._meta_icon_font_edit.editingFinished.connect(self._on_metadata_icons_changed)
-        g.addWidget(self._meta_icon_font_edit, 3, 1)
-        self._meta_icon_edits: dict[str, QLineEdit] = {}
-        for i, (key, label) in enumerate([("update", "Refresh icon"), ("mirror", "Mirror icon"), ("auto", "Auto-math icon"), ("clear", "Clear icon")], start=4):
-            g.addWidget(QLabel(label), i, 0)
-            edit = QLineEdit()
-            edit.editingFinished.connect(self._on_metadata_icons_changed)
-            self._meta_icon_edits[key] = edit
-            g.addWidget(edit, i, 1)
-        g.setColumnStretch(1, 1)
-        return tab
+    def _validate_regex_control(self, text: str) -> None:
+        if self._rx_err is None:
+            return
+        if not text.strip():
+            self._rx_err.clear()
+            self._rx_err.setVisible(False)
+            return
+        try:
+            re.compile(text)
+        except re.error as exc:
+            self._rx_err.setText(f"  ✗ {exc}")
+            self._rx_err.setVisible(True)
+        else:
+            self._rx_err.clear()
+            self._rx_err.setVisible(False)
 
     def _append_console(self, msg: str, _level: str = "info") -> None:
         self._history_console.append(msg)
@@ -214,7 +320,9 @@ class MainWindow(QMainWindow):
 
     def _load_settings(self) -> None:
         default_downloads = str(Path.home() / "Downloads")
-        default_theme = self._theme_choices.get("COSMIC • Windows 10 Light", next(iter(self._theme_choices.values()), ""))
+        default_theme = self._theme_choices.get(
+            "COSMIC • Windows 10 Light", next(iter(self._theme_choices.values()), "")
+        )
         settings = {
             "theme": default_theme,
             "default_path": default_downloads,
@@ -230,7 +338,9 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._settings_path_edit.setText(settings.get("default_path", default_downloads))
-        self._current_dir = settings.get("last_directory") or settings.get("default_path", default_downloads)
+        self._current_dir = settings.get("last_directory") or settings.get(
+            "default_path", default_downloads
+        )
         always_on_top = bool(settings.get("always_on_top", False))
         self._always_on_top.blockSignals(True)
         self._always_on_top.setChecked(always_on_top)
@@ -245,9 +355,13 @@ class MainWindow(QMainWindow):
         )
         selected_theme = settings.get("theme", default_theme)
         reverse = {value: key for key, value in self._theme_choices.items()}
-        self._theme_combo.setCurrentText(reverse.get(selected_theme, next(iter(self._theme_choices.keys()), "")))
+        self._theme_combo.setCurrentText(
+            reverse.get(selected_theme, next(iter(self._theme_choices.keys()), ""))
+        )
         self._set_theme(selected_theme)
-        self._pipeline_panel.set_library(settings.get("pipelines", {}), settings.get("active_pipeline"))
+        self._pipeline_panel.set_library(
+            settings.get("pipelines", {}), settings.get("active_pipeline")
+        )
         meta_icons = settings.get("metadata_icons", {})
         self._meta_icon_font_edit.setText(settings.get("metadata_icon_font", "Noto Color Emoji"))
         for key, edit in self._meta_icon_edits.items():
@@ -256,15 +370,20 @@ class MainWindow(QMainWindow):
 
     def _save_settings(self) -> None:
         g = self.geometry()
-        data = {"theme": self._theme_choices.get(self._theme_combo.currentText(), next(iter(self._theme_choices.values()), "")),
-                "default_path": self._settings_path_edit.text().strip() or str(Path.home() / "Downloads"),
-                "last_directory": self._current_dir,
-                "always_on_top": self._always_on_top.isChecked(),
-                "metadata_icon_font": self._meta_icon_font_edit.text().strip() or "Noto Color Emoji",
-                "metadata_icons": {k: e.text().strip() for k, e in self._meta_icon_edits.items()},
-                "pipelines": self._pipeline_panel.pipeline_library(),
-                "active_pipeline": self._pipeline_panel.active_pipeline_name(),
-                "window": {"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()}}
+        data = {
+            "theme": self._theme_choices.get(
+                self._theme_combo.currentText(), next(iter(self._theme_choices.values()), "")
+            ),
+            "default_path": self._settings_path_edit.text().strip()
+            or str(Path.home() / "Downloads"),
+            "last_directory": self._current_dir,
+            "always_on_top": self._always_on_top.isChecked(),
+            "metadata_icon_font": self._meta_icon_font_edit.text().strip() or "Noto Color Emoji",
+            "metadata_icons": {k: e.text().strip() for k, e in self._meta_icon_edits.items()},
+            "pipelines": self._pipeline_panel.pipeline_library(),
+            "active_pipeline": self._pipeline_panel.active_pipeline_name(),
+            "window": {"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()},
+        }
         self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def _on_pipeline_library_changed(self, _library: dict, _active_name: str) -> None:
@@ -272,7 +391,9 @@ class MainWindow(QMainWindow):
 
     def _on_metadata_icons_changed(self) -> None:
         icons = {k: e.text().strip() for k, e in self._meta_icon_edits.items()}
-        self._metadata_window.table.set_action_icons(icons, self._meta_icon_font_edit.text().strip())
+        self._metadata_window.table.set_action_icons(
+            icons, self._meta_icon_font_edit.text().strip()
+        )
         self._save_settings()
 
     def _on_always_on_top_toggled(self, checked: bool) -> None:
@@ -288,418 +409,6 @@ class MainWindow(QMainWindow):
         shutil.rmtree(self._history_preview_dir, ignore_errors=True)
         super().closeEvent(event)
 
-    # ── Path bar ──────────────────────────────────────────────────────── #
-
-    def _build_path_bar(self) -> QWidget:
-        w = QWidget(); h = QHBoxLayout(w)
-        h.setContentsMargins(0, 0, 0, 0); h.setSpacing(6)
-        h.addWidget(QLabel("📂"))
-        self._path_edit = QLineEdit()
-        self._path_edit.setPlaceholderText("Directory path…")
-        self._path_edit.returnPressed.connect(self._navigate_path_bar)
-        h.addWidget(self._path_edit, stretch=1)
-        for lbl, w_, slot in [
-            ("Go",      44, self._navigate_path_bar),
-            ("↑ Up",    56, self._go_up),
-            ("Browse…", 80, self._browse_folder),
-        ]:
-            b = QPushButton(lbl); b.setFixedWidth(w_); b.clicked.connect(slot)
-            h.addWidget(b)
-        return w
-
-    # ── Table pane ────────────────────────────────────────────────────── #
-
-    def _build_table_pane(self) -> QWidget:
-        w = QWidget(); v = QVBoxLayout(w)
-        v.setContentsMargins(0, 0, 0, 0); v.setSpacing(4)
-
-        self._file_table = FileTable()
-
-        # Mini toolbar
-        tb = QWidget(); th = QHBoxLayout(tb)
-        th.setContentsMargins(0, 0, 0, 0); th.setSpacing(4)
-        th.addWidget(SectionLabel("Files"))
-        th.addStretch()
-        self._count_label = QLabel("")
-        self._count_label.setStyleSheet(
-            f"color:{COLORS['MUT']};font-size:11px;"
-        )
-        th.addWidget(self._count_label)
-        v.addWidget(tb)
-
-        self._file_table.rows_reordered.connect(self._schedule_preview)
-        self._file_table.selection_toggled.connect(self._schedule_preview)
-        v.addWidget(self._file_table)
-        return w
-
-    # ── Controls pane ─────────────────────────────────────────────────── #
-
-    def _build_controls_pane(self) -> QWidget:
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        container = QWidget()
-        g = QGridLayout(container)
-        g.setContentsMargins(4, 4, 4, 4); g.setSpacing(5)
-        self._pipeline_panel = PipelineEditor()
-        self._pipeline_panel.order_changed.connect(self._schedule_preview)
-        self._pipeline_panel.library_changed.connect(self._on_pipeline_library_changed)
-        groups = [
-            self._pipeline_panel,
-            self._grp_regex(),
-            self._grp_name(),
-            self._grp_replace(),
-            self._grp_case(),
-            self._grp_remove(),
-            self._grp_add(),
-            self._grp_auto_date(),
-            self._grp_numbering(),
-            self._grp_move_copy(),
-            self._grp_extension(),
-            self._grp_filters(),
-        ]
-        for row, group in enumerate(groups):
-            g.addWidget(group, row, 0)
-        g.setColumnStretch(0, 1)
-        g.setRowStretch(len(groups), 1)
-        scroll.setWidget(container)
-        return scroll
-
-    # ── Action bar ────────────────────────────────────────────────────── #
-
-    def _build_action_bar(self) -> QWidget:
-        bar = QWidget(); h = QHBoxLayout(bar)
-        h.setContentsMargins(4, 2, 4, 2); h.setSpacing(8)
-        self._info_label = QLabel("")
-        self._info_label.setStyleSheet(
-            f"color:{COLORS['MUT']};font-size:11px;"
-        )
-        h.addWidget(self._info_label, stretch=1)
-        self._chk_auto_dedup = QCheckBox("Auto-dedup conflicts")
-        self._chk_auto_dedup.setChecked(True)
-        self._chk_auto_dedup.setToolTip(
-            "If destination exists, append _(2), _(3)… automatically"
-        )
-        h.addWidget(self._chk_auto_dedup)
-        self._btn_undo = QPushButton("⎌  Undo")
-        self._btn_undo.setObjectName("undoBtn")
-        self._btn_undo.setEnabled(False)
-        self._btn_undo.clicked.connect(self._do_undo)
-        h.addWidget(self._btn_undo)
-        self._btn_rename = QPushButton("✦  Rename")
-        self._btn_rename.setObjectName("renameBtn")
-        self._btn_rename.clicked.connect(self._do_rename)
-        h.addWidget(self._btn_rename)
-        return bar
-
-    # ══════════════════════════════════════════════════════════════════ #
-    #  GROUP BOXES
-    # ══════════════════════════════════════════════════════════════════ #
-
-    def _gl(self, parent: QGroupBox) -> QGridLayout:
-        g = QGridLayout(parent); g.setSpacing(4); g.setContentsMargins(8, 18, 8, 8)
-        reset_btn = QPushButton("R")
-        reset_btn.setFixedSize(18, 18)
-        reset_btn.setToolTip("Reset this group")
-        reset_btn.clicked.connect(lambda: self._reset_group(parent))
-        g.addWidget(reset_btn, 0, 99, alignment=Qt.AlignRight)
-        return g
-
-    def _reset_group(self, group: QGroupBox) -> None:
-        for widget in group.findChildren((QLineEdit, QSpinBox, QComboBox, QCheckBox)):
-            if isinstance(widget, QLineEdit):
-                widget.clear()
-            elif isinstance(widget, QSpinBox):
-                widget.setValue(0)
-            elif isinstance(widget, QComboBox):
-                widget.setCurrentIndex(0)
-            elif isinstance(widget, QCheckBox):
-                widget.setChecked(False)
-        self._schedule_preview()
-
-    # ── RegEx (1) ─────────────────────────────────────────────────────── #
-
-    def _grp_regex(self) -> QGroupBox:
-        gb = QGroupBox("⚡  REGEX  (1)"); g = self._gl(gb)
-
-        g.addWidget(QLabel("Match"), 0, 0)
-        self.rx_match = RegExLineEdit()
-        self.rx_match.setPlaceholderText("pattern…")
-        self.rx_match.setToolTip("Python regular expression pattern")
-        g.addWidget(self.rx_match, 0, 1, 1, 2)
-
-        self._rx_err = QLabel("")
-        self._rx_err.setStyleSheet(f"color:{COLORS['ERR']};font-size:10px;")
-        self._rx_err.setVisible(False)
-        self.rx_match.set_error_label(self._rx_err)
-        g.addWidget(self._rx_err, 1, 1, 1, 2)
-
-        g.addWidget(QLabel("Replace"), 2, 0)
-        self.rx_replace = QLineEdit(); self.rx_replace.setPlaceholderText("replacement…")
-        self.rx_replace.setToolTip("Replacement string (supports \\1 back-references)")
-        g.addWidget(self.rx_replace, 2, 1, 1, 2)
-
-        self.rx_inc_ext = QCheckBox("Inc.Ext.")
-        self.rx_simple  = QCheckBox("Simple (i)")
-        self.rx_v2      = QCheckBox("v2")
-        g.addWidget(self.rx_inc_ext, 3, 0)
-        g.addWidget(self.rx_simple,  3, 1)
-        g.addWidget(self.rx_v2,      3, 2)
-
-        self._wire(self.rx_match, self.rx_replace,
-                   self.rx_inc_ext, self.rx_simple, self.rx_v2)
-        return gb
-
-    # ── Name (2) ──────────────────────────────────────────────────────── #
-
-    def _grp_name(self) -> QGroupBox:
-        gb = QGroupBox("✏️  NAME  (2)"); g = self._gl(gb)
-        g.addWidget(QLabel("Name"), 0, 0)
-        self.name_mode = QComboBox()
-        self.name_mode.addItems(["Keep", "Remove", "Fixed", "Reverse"])
-        g.addWidget(self.name_mode, 0, 1)
-        g.addWidget(QLabel("Fixed"), 1, 0)
-        self.name_fixed = QLineEdit(); self.name_fixed.setPlaceholderText("fixed name…")
-        g.addWidget(self.name_fixed, 1, 1)
-        self._wire(self.name_mode, self.name_fixed)
-        return gb
-
-    # ── Replace (3) ───────────────────────────────────────────────────── #
-
-    def _grp_replace(self) -> QGroupBox:
-        gb = QGroupBox("🔁  REPLACE  (3)"); g = self._gl(gb)
-        g.addWidget(QLabel("Replace"), 0, 0)
-        self.repl_find = QLineEdit(); self.repl_find.setPlaceholderText("find…")
-        g.addWidget(self.repl_find, 0, 1, 1, 2)
-        g.addWidget(QLabel("With"), 1, 0)
-        self.repl_with = QLineEdit(); self.repl_with.setPlaceholderText("with…")
-        g.addWidget(self.repl_with, 1, 1, 1, 2)
-        self.repl_match_case = QCheckBox("Match Case")
-        self.repl_first      = QCheckBox("First only")
-        g.addWidget(self.repl_match_case, 2, 0, 1, 2)
-        g.addWidget(self.repl_first, 2, 2)
-        self._wire(self.repl_find, self.repl_with,
-                   self.repl_match_case, self.repl_first)
-        return gb
-
-    # ── Case (4) ──────────────────────────────────────────────────────── #
-
-    def _grp_case(self) -> QGroupBox:
-        gb = QGroupBox("🔤  CASE  (4)"); g = self._gl(gb)
-        g.addWidget(QLabel("Case"), 0, 0)
-        self.case_mode = QComboBox()
-        self.case_mode.addItems(["Same", "Lower", "Upper", "Title", "Sentence"])
-        g.addWidget(self.case_mode, 0, 1)
-        g.addWidget(QLabel("Exceptions"), 1, 0)
-        self.case_except = QLineEdit()
-        self.case_except.setPlaceholderText("word, word…")
-        self.case_except.setToolTip("Comma-separated words to leave unchanged")
-        g.addWidget(self.case_except, 1, 1)
-        self._wire(self.case_mode, self.case_except)
-        return gb
-
-    # ── Remove (5) ────────────────────────────────────────────────────── #
-
-    def _grp_remove(self) -> QGroupBox:
-        gb = QGroupBox("✂️  REMOVE  (5)"); g = self._gl(gb)
-
-        def sp(mx=999):
-            s = QSpinBox(); s.setRange(0, mx); s.setFixedWidth(56); return s
-
-        g.addWidget(QLabel("First n"), 0, 0); self.rm_first = sp()
-        g.addWidget(self.rm_first, 0, 1)
-        g.addWidget(QLabel("Last n"),  0, 2); self.rm_last  = sp()
-        g.addWidget(self.rm_last,  0, 3)
-        g.addWidget(QLabel("From"),    1, 0); self.rm_from  = sp()
-        g.addWidget(self.rm_from,  1, 1)
-        g.addWidget(QLabel("to"),      1, 2); self.rm_to    = sp()
-        g.addWidget(self.rm_to,    1, 3)
-
-        self.rm_digits    = QCheckBox("Digits")
-        self.rm_symbols   = QCheckBox("Symbols")
-        self.rm_high      = QCheckBox("High")
-        self.rm_ds        = QCheckBox("D/S")
-        self.rm_accents   = QCheckBox("Accents")
-        self.rm_lead_dots = QCheckBox("Lead Dots")
-        self.rm_brackets  = QCheckBox("Brackets ()")
-        self.rm_trim      = QCheckBox("Trim spaces")
-
-        g.addWidget(self.rm_digits,    2, 0); g.addWidget(self.rm_symbols,   2, 1)
-        g.addWidget(self.rm_high,      2, 2); g.addWidget(self.rm_ds,        2, 3)
-        g.addWidget(self.rm_accents,   3, 0); g.addWidget(self.rm_lead_dots, 3, 1)
-        g.addWidget(self.rm_brackets,  3, 2); g.addWidget(self.rm_trim,      3, 3)
-
-        self._wire(self.rm_first, self.rm_last, self.rm_from, self.rm_to,
-                   self.rm_digits, self.rm_symbols, self.rm_high, self.rm_ds,
-                   self.rm_accents, self.rm_lead_dots, self.rm_brackets, self.rm_trim)
-        return gb
-
-    # ── Add (7) ───────────────────────────────────────────────────────── #
-
-    def _grp_add(self) -> QGroupBox:
-        gb = QGroupBox("➕  ADD  (7)"); g = self._gl(gb)
-        _tip = (
-            "Token substitution:\n"
-            "  {n}            1-based row counter\n"
-            "  {n0}           0-based row counter\n"
-            "  {comic_series} CBZ ComicInfo Series\n"
-            "  {comic_volume} CBZ ComicInfo Volume\n"
-            "  {pdf_title}    PDF title metadata\n"
-            "  {exif_make}    Image camera make\n"
-            "  {file_mtime}   File mod date YYYY-MM-DD\n"
-            "  {file_size}    File size in bytes"
-        )
-        g.addWidget(QLabel("Prefix"), 0, 0)
-        self.add_prefix = QLineEdit()
-        self.add_prefix.setPlaceholderText("prefix… ({n}, {comic_series}…)")
-        self.add_prefix.setToolTip(_tip)
-        g.addWidget(self.add_prefix, 0, 1, 1, 4)
-
-        g.addWidget(QLabel("Insert"), 1, 0)
-        self.add_insert = QLineEdit(); self.add_insert.setPlaceholderText("text…")
-        g.addWidget(self.add_insert, 1, 1, 1, 2)
-        g.addWidget(QLabel("at pos."), 1, 3)
-        self.add_pos = QSpinBox(); self.add_pos.setRange(0, 999); self.add_pos.setFixedWidth(52)
-        self.add_pos.setToolTip("1-based position (0 = append)")
-        g.addWidget(self.add_pos, 1, 4)
-
-        g.addWidget(QLabel("Suffix"), 2, 0)
-        self.add_suffix = QLineEdit()
-        self.add_suffix.setPlaceholderText("suffix… (supports {tokens})")
-        self.add_suffix.setToolTip(_tip)
-        g.addWidget(self.add_suffix, 2, 1, 1, 4)
-
-        self.add_word_space = QCheckBox("Word Space before suffix")
-        g.addWidget(self.add_word_space, 3, 0, 1, 3)
-
-        self._wire(self.add_prefix, self.add_insert, self.add_pos,
-                   self.add_suffix, self.add_word_space)
-        return gb
-
-    # ── Auto Date (8) ─────────────────────────────────────────────────── #
-
-    def _grp_auto_date(self) -> QGroupBox:
-        gb = QGroupBox("📅  AUTO DATE  (8)"); g = self._gl(gb)
-        g.addWidget(QLabel("Mode"), 0, 0)
-        self.date_mode = QComboBox()
-        self.date_mode.addItems(["None", "Prefix", "Suffix"])
-        g.addWidget(self.date_mode, 0, 1)
-        g.addWidget(QLabel("Type"), 1, 0)
-        self.date_type = QComboBox()
-        self.date_type.addItems(["Creation (Current)", "Modified", "Accessed"])
-        g.addWidget(self.date_type, 1, 1)
-        g.addWidget(QLabel("Fmt"), 2, 0)
-        self.date_fmt = QComboBox()
-        self.date_fmt.addItems(["YMD", "DMY", "MDY", "ISO", "YMDHM", "HUMAN"])
-        g.addWidget(self.date_fmt, 2, 1)
-        g.addWidget(QLabel("Sep."), 3, 0)
-        self.date_sep = QLineEdit(); self.date_sep.setPlaceholderText("_")
-        self.date_sep.setFixedWidth(44)
-        g.addWidget(self.date_sep, 3, 1)
-        self._wire(self.date_mode, self.date_type, self.date_fmt, self.date_sep)
-        return gb
-
-    # ── Numbering (10) ────────────────────────────────────────────────── #
-
-    def _grp_numbering(self) -> QGroupBox:
-        gb = QGroupBox("#  NUMBERING  (10)"); g = self._gl(gb)
-        g.addWidget(QLabel("Mode"), 0, 0)
-        self.num_mode = QComboBox()
-        self.num_mode.addItems(["None", "Prefix", "Suffix", "Both"])
-        g.addWidget(self.num_mode, 0, 1)
-
-        for row, lbl, attr, val in [
-            (1, "Start", "num_start", 1),
-            (2, "Incr.", "num_incr",  1),
-            (3, "Pad",   "num_pad",   0),
-            (5, "Break", "num_break", 0),
-        ]:
-            g.addWidget(QLabel(lbl), row, 0)
-            s = QSpinBox(); s.setRange(0, 99999); s.setValue(val)
-            setattr(self, attr, s); g.addWidget(s, row, 1)
-
-        g.addWidget(QLabel("Sep."), 4, 0)
-        self.num_sep = QLineEdit(); self.num_sep.setPlaceholderText("_")
-        g.addWidget(self.num_sep, 4, 1)
-
-        g.addWidget(QLabel("Base"), 6, 0)
-        self.num_base = QComboBox()
-        self.num_base.addItems(["Decimal", "Alpha", "Roman"])
-        self.num_base.setToolTip(
-            "Decimal → 1 2 3 …\nAlpha → a b c … aa ab …\nRoman → i ii iii …"
-        )
-        g.addWidget(self.num_base, 6, 1)
-
-        self.num_break.setToolTip("Reset counter every N files (0 = never)")
-        self._wire(self.num_mode, self.num_start, self.num_incr,
-                   self.num_pad, self.num_sep, self.num_break, self.num_base)
-        return gb
-
-    # ── Move / Copy Parts (6) ─────────────────────────────────────────── #
-
-    def _grp_move_copy(self) -> QGroupBox:
-        gb = QGroupBox("↔️  MOVE/COPY  (6)"); g = self._gl(gb)
-        g.addWidget(QLabel("Mode"), 0, 0)
-        self.mcp_mode = QComboBox()
-        self.mcp_mode.addItems(["None", "Move", "Copy"])
-        self.mcp_mode.setToolTip("Move or copy a character range to a new position")
-        g.addWidget(self.mcp_mode, 0, 1)
-        for row, lbl, attr in [
-            (1, "From pos.", "mcp_from"),
-            (2, "Length",    "mcp_length"),
-            (3, "To pos.",   "mcp_to"),
-        ]:
-            g.addWidget(QLabel(lbl), row, 0)
-            s = QSpinBox(); s.setRange(1, 999); s.setValue(1)
-            setattr(self, attr, s); g.addWidget(s, row, 1)
-        g.addWidget(QLabel("Sep."), 4, 0)
-        self.mcp_sep = QLineEdit(); self.mcp_sep.setPlaceholderText("-")
-        self.mcp_sep.setFixedWidth(40)
-        g.addWidget(self.mcp_sep, 4, 1)
-        self._wire(self.mcp_mode, self.mcp_from, self.mcp_length,
-                   self.mcp_to, self.mcp_sep)
-        return gb
-
-    # ── Extension (11) ────────────────────────────────────────────────── #
-
-    def _grp_extension(self) -> QGroupBox:
-        gb = QGroupBox("🔗  EXTENSION  (11)"); g = self._gl(gb)
-        g.addWidget(QLabel("Mode"), 0, 0)
-        self.ext_mode = QComboBox()
-        self.ext_mode.addItems(["Same", "Lower", "Upper", "Fixed", "Remove"])
-        g.addWidget(self.ext_mode, 0, 1)
-        g.addWidget(QLabel("Fixed"), 1, 0)
-        self.ext_fixed = QLineEdit(); self.ext_fixed.setPlaceholderText(".ext")
-        g.addWidget(self.ext_fixed, 1, 1)
-        self._wire(self.ext_mode, self.ext_fixed)
-        return gb
-
-    # ── Filters (12) ──────────────────────────────────────────────────── #
-
-    def _grp_filters(self) -> QGroupBox:
-        gb = QGroupBox("🔍  FILTERS  (12)"); g = self._gl(gb)
-        g.addWidget(QLabel("Mask"), 0, 0)
-        self.flt_mask = QLineEdit("*")
-        self.flt_mask.setToolTip("Glob pattern, e.g. *.cbz  or  Claymore*")
-        g.addWidget(self.flt_mask, 0, 1, 1, 3)
-        self.flt_folders    = QCheckBox("Folders")
-        self.flt_files      = QCheckBox("Files"); self.flt_files.setChecked(True)
-        self.flt_hidden     = QCheckBox("Hidden")
-        self.flt_subfolders = QCheckBox("Subfolders")
-        for col, w in enumerate([self.flt_folders, self.flt_files,
-                                  self.flt_hidden, self.flt_subfolders]):
-            g.addWidget(w, 1, col)
-        g.addWidget(QLabel("Name Min"), 2, 0)
-        self.flt_name_min = QSpinBox(); self.flt_name_min.setRange(0, 999)
-        g.addWidget(self.flt_name_min, 2, 1)
-        g.addWidget(QLabel("Max"), 2, 2)
-        self.flt_name_max = QSpinBox(); self.flt_name_max.setRange(0, 999)
-        g.addWidget(self.flt_name_max, 2, 3)
-        # Filter changes reload the directory listing
-        for w in (self.flt_mask, self.flt_folders, self.flt_files,
-                  self.flt_hidden, self.flt_subfolders,
-                  self.flt_name_min, self.flt_name_max):
-            self._wire_to(w, self._on_filter_changed)
-        return gb
-
     # ══════════════════════════════════════════════════════════════════ #
     #  SIGNAL WIRING HELPERS
     # ══════════════════════════════════════════════════════════════════ #
@@ -710,10 +419,14 @@ class MainWindow(QMainWindow):
             self._wire_to(w, self._schedule_preview)
 
     def _wire_to(self, w: QWidget, slot) -> None:
-        if isinstance(w, QLineEdit):                w.textChanged.connect(slot)
-        elif isinstance(w, (QSpinBox, QDoubleSpinBox)): w.valueChanged.connect(slot)
-        elif isinstance(w, QComboBox):              w.currentIndexChanged.connect(slot)
-        elif isinstance(w, QCheckBox):              w.stateChanged.connect(slot)
+        if isinstance(w, QLineEdit):
+            w.textChanged.connect(slot)
+        elif isinstance(w, (QSpinBox, QDoubleSpinBox)):
+            w.valueChanged.connect(slot)
+        elif isinstance(w, QComboBox):
+            w.currentIndexChanged.connect(slot)
+        elif isinstance(w, QCheckBox):
+            w.stateChanged.connect(slot)
 
     def _schedule_preview(self, *_) -> None:
         self._preview_timer.start()
@@ -778,13 +491,18 @@ class MainWindow(QMainWindow):
     def _apply_params(self, params: dict) -> None:
         def _s(w, key):
             v = params.get(key)
-            if v is None: return
-            if isinstance(w, QLineEdit):                w.setText(str(v))
-            elif isinstance(w, (QSpinBox, QDoubleSpinBox)): w.setValue(int(v))
+            if v is None:
+                return
+            if isinstance(w, QLineEdit):
+                w.setText(str(v))
+            elif isinstance(w, (QSpinBox, QDoubleSpinBox)):
+                w.setValue(int(v))
             elif isinstance(w, QComboBox):
                 i = w.findText(str(v))
-                if i >= 0: w.setCurrentIndex(i)
-            elif isinstance(w, QCheckBox):              w.setChecked(bool(v))
+                if i >= 0:
+                    w.setCurrentIndex(i)
+            elif isinstance(w, QCheckBox):
+                w.setChecked(bool(v))
 
         pairs = [
             (self.rx_match, "regex_match"), (self.rx_replace, "regex_replace"),
@@ -867,13 +585,19 @@ class MainWindow(QMainWindow):
 
         filtered: list[str] = []
         for item in items:
-            if item.name.startswith(".") and not show_h: continue
-            if item.is_dir()  and not show_d:            continue
-            if item.is_file() and not show_f:            continue
-            if not fnmatch.fnmatch(item.name, mask):     continue
+            if item.name.startswith(".") and not show_h:
+                continue
+            if item.is_dir() and not show_d:
+                continue
+            if item.is_file() and not show_f:
+                continue
+            if not fnmatch.fnmatch(item.name, mask):
+                continue
             sl = len(Path(item.name).stem)
-            if name_min and sl < name_min:               continue
-            if name_max and sl > name_max:               continue
+            if name_min and sl < name_min:
+                continue
+            if name_max and sl > name_max:
+                continue
             filtered.append(item.name)
 
         self._file_table.populate(filtered)
@@ -946,9 +670,11 @@ class MainWindow(QMainWindow):
                 )
                 error = False
             except re.error as exc:
-                new_name = f"[regex: {exc}]"; error = True
+                new_name = f"[regex: {exc}]"
+                error = True
             except Exception as exc:
-                new_name = f"[error: {exc}]"; error = True
+                new_name = f"[error: {exc}]"
+                error = True
 
             enabled_idx += 1
             is_changed  = (not error) and (new_name != original)

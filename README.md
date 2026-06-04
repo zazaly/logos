@@ -37,7 +37,10 @@ Windows launch helpers:
 │   ├── metadata_comicxml.py
 │   ├── metadata_sidecar.py
 │   └── metadata_worker.py
-├── tests/
+├── gui/
+│   ├── main_window.ui
+│   ├── rename_controls.ui
+│   └── pipeline_editor.ui
 ├── themes/
 └── pyproject.toml
 ```
@@ -47,14 +50,14 @@ Windows launch helpers:
 ### 1) Batch Rename Engine
 - Token-driven naming (`{name}`, `{ext}`, date/time, metadata-backed fields)
 - Chained transforms (case conversion, trimming, replace/regex rules)
-- Drag/drop deterministic rule pipelines with named reusable pipeline presets
+- Qt Designer-editable rename controls and a patch-cable rule pipeline tab
 - Regex extraction and replacement with previews
 - Collision-safe renaming with optional auto-dedup
 
 ### 2) Patch-Cable Rule Pipeline Editor
 - Reorder rename groups on a VSTHost-inspired canvas without changing the file table workflow
 - Save named reusable pipelines such as `Factory Default`, `Clean Then Number`, and custom variants
-- The same deterministic pipeline order powers preview, rename, presets, and tests
+- The same deterministic pipeline order powers preview, rename, and presets
 
 ### 3) Live Preview + History
 - Debounced preview updates for responsive interaction
@@ -84,12 +87,13 @@ Windows launch helpers:
 
 ## Development
 
-Install dependencies and run tests:
+Install dependencies for local development:
 
 ```bash
 pip install -e .[dev]
-pytest -q
 ```
+
+The previous standalone test folder has been removed; use targeted manual checks or add new tests with the feature being changed.
 
 ## Configuration
 
@@ -100,12 +104,12 @@ The app persists user settings (theme, paths, window geometry, metadata action i
 1. **Add a plugin architecture** for token providers, metadata parsers, and export backends.
 2. **Create a job queue + session manager** so long operations can be paused/resumed and recovered after crashes.
 3. **Introduce a command palette** (Ctrl/Cmd+K) for fast navigation and action discovery.
-4. **Expand the deterministic rule pipeline editor** with conditional branches, import/export, and per-pipeline safety reports.
+4. **Expand the deterministic rule pipeline editor** with import/export and per-pipeline safety reports.
 5. **Ship first-class file safety tooling** (transaction logs, checkpoint snapshots, rollback wizard).
 6. **Add rich observability** (structured logs, telemetry toggles, performance dashboards for large batches).
 7. **Expand format support** (audio/video EXIF/XMP/ID3, EPUB metadata, office document metadata).
 8. **Implement profile sync/import-export** for teams and multi-machine usage.
-9. **Add full integration test fixtures for GUI flows** using headless Qt testing harnesses.
+9. **Add focused integration fixtures for GUI flows** when new behavior needs automated coverage.
 10. **Package native distributables** (MSI, macOS app bundle, Linux AppImage/Flatpak) with auto-update channels.
 
 ## License

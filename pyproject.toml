@@ -20,9 +20,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-qt>=4.4",
-    "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
@@ -36,12 +33,6 @@ bulk-rename = "studio.__main__:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["studio*"]
-
-# ── pytest ────────────────────────────────────────────────────────────────── #
-[tool.pytest.ini_options]
-testpaths    = ["tests"]
-addopts      = "-v --tb=short"
-pythonpath   = ["."]
 
 # ── ruff (linter / formatter) ─────────────────────────────────────────────── #
 [tool.ruff]
