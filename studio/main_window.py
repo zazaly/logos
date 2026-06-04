@@ -42,6 +42,7 @@ from studio.engine   import RenameEngine
 from studio.history  import HistoryEntry, HistoryManager
 from studio.metadata import MetadataExtractor
 from studio.presets  import PresetManager
+from studio.pipeline_ui import PipelineEditor
 from studio.theme    import (
     COLORS, THEMES_DIR, apply_theme, load_cosmic_ron_palette,
 )
@@ -220,6 +221,8 @@ class MainWindow(QMainWindow):
             "last_directory": default_downloads,
             "always_on_top": False,
             "window": {"x": 100, "y": 100, "w": 1920, "h": 826},
+            "pipelines": {},
+            "active_pipeline": "Factory Default",
         }
         if self._settings_path.exists():
             try:
@@ -244,6 +247,7 @@ class MainWindow(QMainWindow):
         reverse = {value: key for key, value in self._theme_choices.items()}
         self._theme_combo.setCurrentText(reverse.get(selected_theme, next(iter(self._theme_choices.keys()), "")))
         self._set_theme(selected_theme)
+        self._pipeline_panel.set_library(settings.get("pipelines", {}), settings.get("active_pipeline"))
         meta_icons = settings.get("metadata_icons", {})
         self._meta_icon_font_edit.setText(settings.get("metadata_icon_font", "Noto Color Emoji"))
         for key, edit in self._meta_icon_edits.items():
@@ -258,8 +262,13 @@ class MainWindow(QMainWindow):
                 "always_on_top": self._always_on_top.isChecked(),
                 "metadata_icon_font": self._meta_icon_font_edit.text().strip() or "Noto Color Emoji",
                 "metadata_icons": {k: e.text().strip() for k, e in self._meta_icon_edits.items()},
+                "pipelines": self._pipeline_panel.pipeline_library(),
+                "active_pipeline": self._pipeline_panel.active_pipeline_name(),
                 "window": {"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()}}
         self._settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _on_pipeline_library_changed(self, _library: dict, _active_name: str) -> None:
+        self._save_settings()
 
     def _on_metadata_icons_changed(self) -> None:
         icons = {k: e.text().strip() for k, e in self._meta_icon_edits.items()}
@@ -330,7 +339,11 @@ class MainWindow(QMainWindow):
         container = QWidget()
         g = QGridLayout(container)
         g.setContentsMargins(4, 4, 4, 4); g.setSpacing(5)
+        self._pipeline_panel = PipelineEditor()
+        self._pipeline_panel.order_changed.connect(self._schedule_preview)
+        self._pipeline_panel.library_changed.connect(self._on_pipeline_library_changed)
         groups = [
+            self._pipeline_panel,
             self._grp_regex(),
             self._grp_name(),
             self._grp_replace(),
@@ -758,6 +771,8 @@ class MainWindow(QMainWindow):
             "mcp_sep":           self.mcp_sep.text(),
             "ext_mode":          self.ext_mode.currentText(),
             "ext_fixed":         self.ext_fixed.text(),
+            "pipeline_order":    self._pipeline_panel.current_order(),
+            "pipeline_name":     self._pipeline_panel.active_pipeline_name(),
         }
 
     def _apply_params(self, params: dict) -> None:
