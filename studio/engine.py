@@ -12,17 +12,9 @@ Public API
 ``index`` is the 0-based position of this file among *enabled* rows.
 ``metadata`` is the dict returned by ``MetadataExtractor.extract()``.
 
-The pipeline applies transformations in this fixed order:
-    1. Name      — keep / remove / fixed / reverse
-    2. RegEx     — pattern substitution (may raise re.error on bad pattern)
-    3. Replace   — plain-text find-and-replace
-    4. Remove    — strip chars / ranges / character classes
-    5. MoveCopy  — move or copy a character range to a new position
-    6. Add       — prefix / insert-at-pos / suffix  (with {token} expansion)
-    7. AutoDate  — inject date string
-    8. Numbering — sequential counter
-    9. Case      — lower / upper / title / sentence
-   10. Extension — normalise or replace file extension
+The pipeline applies transformations in a deterministic named order.  The
+default order preserves the legacy Bulk Rename Utility flow, while the UI can
+pass ``params["pipeline_order"]`` to reorder reusable rule groups.
 """
 from __future__ import annotations
 
@@ -31,6 +23,8 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from studio.pipeline import normalise_pipeline_order
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -60,16 +54,27 @@ class RenameEngine:
         ext  = path.suffix      # e.g. ".cbz"  (includes leading dot)
         meta = metadata or {}
 
-        stem = self._name(stem, params)
-        stem, ext = self._regex(stem, ext, params)  # may raise re.error; may update ext
-        stem = self._replace(stem, params)
-        stem = self._remove(stem, params)
-        stem = self._move_copy(stem, params)
-        stem = self._add(stem, params, index, meta)
-        stem = self._auto_date(stem, params, meta)
-        stem = self._numbering(stem, params, index)
-        stem = self._case(stem, params)
-        ext  = self._extension(ext, params)
+        for step_key in normalise_pipeline_order(params.get("pipeline_order")):
+            if step_key == "name":
+                stem = self._name(stem, params)
+            elif step_key == "regex":
+                stem, ext = self._regex(stem, ext, params)  # may raise re.error; may update ext
+            elif step_key == "replace":
+                stem = self._replace(stem, params)
+            elif step_key == "remove":
+                stem = self._remove(stem, params)
+            elif step_key == "move_copy":
+                stem = self._move_copy(stem, params)
+            elif step_key == "add":
+                stem = self._add(stem, params, index, meta)
+            elif step_key == "auto_date":
+                stem = self._auto_date(stem, params, meta)
+            elif step_key == "numbering":
+                stem = self._numbering(stem, params, index)
+            elif step_key == "case":
+                stem = self._case(stem, params)
+            elif step_key == "extension":
+                ext = self._extension(ext, params)
 
         return stem + ext
 

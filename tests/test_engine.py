@@ -376,6 +376,40 @@ class TestPipeline:
         # e.g. "20240516_photo_006.jpg"
         assert _re.match(r"^\d{8}_photo_006\.jpg$", result), result
 
+    def test_custom_pipeline_order_changes_result(self, eng):
+        legacy = eng.process(
+            "hello.txt",
+            p(add_prefix="x", case_mode="Upper"),
+        )
+        custom = eng.process(
+            "hello.txt",
+            p(
+                add_prefix="x",
+                case_mode="Upper",
+                pipeline_order=[
+                    "name",
+                    "regex",
+                    "replace",
+                    "remove",
+                    "move_copy",
+                    "case",
+                    "add",
+                    "auto_date",
+                    "numbering",
+                    "extension",
+                ],
+            ),
+        )
+        assert legacy == "XHELLO.txt"
+        assert custom == "xHELLO.txt"
+
+    def test_partial_pipeline_order_is_normalised(self, eng):
+        result = eng.process(
+            "file.TXT",
+            p(ext_mode="Lower", pipeline_order=["extension"]),
+        )
+        assert result == "file.txt"
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  HistoryManager

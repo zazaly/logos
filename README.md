@@ -47,32 +47,38 @@ Windows launch helpers:
 ### 1) Batch Rename Engine
 - Token-driven naming (`{name}`, `{ext}`, date/time, metadata-backed fields)
 - Chained transforms (case conversion, trimming, replace/regex rules)
+- Drag/drop deterministic rule pipelines with named reusable pipeline presets
 - Regex extraction and replacement with previews
 - Collision-safe renaming with optional auto-dedup
 
-### 2) Live Preview + History
+### 2) Patch-Cable Rule Pipeline Editor
+- Reorder rename groups on a VSTHost-inspired canvas without changing the file table workflow
+- Save named reusable pipelines such as `Factory Default`, `Clean Then Number`, and custom variants
+- The same deterministic pipeline order powers preview, rename, presets, and tests
+
+### 3) Live Preview + History
 - Debounced preview updates for responsive interaction
 - Operation history stack with undo support
 - Dry-run style visibility before file operations
 
-### 3) Metadata-Aware Renaming
+### 4) Metadata-Aware Renaming
 - Pull metadata from supported file types
 - Use metadata directly in rename templates
 - Caching to keep large folder operations fast
 
-### 4) Archive Metadata Editor
+### 5) Archive Metadata Editor
 - Table-based editing across multiple archives
 - Row action buttons: `update`, `mirror`, `auto`, `clear`
 - Auto-increment support for key metadata fields
 - Background extraction and repackaging workers
 
-### 5) Sidecar + Export Support
+### 6) Sidecar + Export Support
 - Generate cover images
 - Export `.metadata.json`
 - Build CSV summary reports
 - Update ComicInfo.xml in extracted package content
 
-### 6) Theming
+### 7) Theming
 - Runtime-selectable themes from `themes/**/*.ron`
 - Default theme preference set to **Windows 10 Light**
 
@@ -94,7 +100,7 @@ The app persists user settings (theme, paths, window geometry, metadata action i
 1. **Add a plugin architecture** for token providers, metadata parsers, and export backends.
 2. **Create a job queue + session manager** so long operations can be paused/resumed and recovered after crashes.
 3. **Introduce a command palette** (Ctrl/Cmd+K) for fast navigation and action discovery.
-4. **Build a deterministic rule pipeline editor** with drag/drop ordering and named reusable pipelines.
+4. **Expand the deterministic rule pipeline editor** with conditional branches, import/export, and per-pipeline safety reports.
 5. **Ship first-class file safety tooling** (transaction logs, checkpoint snapshots, rollback wizard).
 6. **Add rich observability** (structured logs, telemetry toggles, performance dashboards for large batches).
 7. **Expand format support** (audio/video EXIF/XMP/ID3, EPUB metadata, office document metadata).
